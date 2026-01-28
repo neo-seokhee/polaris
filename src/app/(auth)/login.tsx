@@ -13,6 +13,9 @@ export default function LoginScreen() {
     const [kakaoLoading, setKakaoLoading] = useState(false);
     const { signIn, signInWithKakao, isKakaoAvailable, enterDemoMode } = useAuth();
 
+    // Redirect URI 미리 계산
+    const kakaoRedirectUri = getKakaoAuthRequestConfig().redirectUri;
+
     const handleDemoMode = () => {
         enterDemoMode();
         router.replace("/(tabs)");
@@ -30,16 +33,6 @@ export default function LoginScreen() {
         } else {
             router.replace("/(tabs)");
         }
-    };
-
-    // DEV: Redirect URI 확인용 (길게 누르면 표시)
-    const showRedirectUri = () => {
-        const config = getKakaoAuthRequestConfig();
-        Alert.alert(
-            "Kakao Redirect URI",
-            config.redirectUri,
-            [{ text: "확인" }]
-        );
     };
 
     const handleLogin = async () => {
@@ -111,7 +104,6 @@ export default function LoginScreen() {
                             (!isKakaoAvailable || kakaoLoading) && styles.kakaoButtonDisabled,
                         ]}
                         onPress={handleKakaoLogin}
-                        onLongPress={showRedirectUri}
                         disabled={!isKakaoAvailable || kakaoLoading}
                     >
                         <Text style={styles.kakaoButtonText}>
@@ -119,10 +111,10 @@ export default function LoginScreen() {
                         </Text>
                     </Pressable>
 
-                    {/* Debug: Redirect URI 확인 */}
-                    <Pressable onPress={showRedirectUri}>
-                        <Text style={styles.debugText}>Redirect URI 확인</Text>
-                    </Pressable>
+                    {/* Debug: Redirect URI 직접 표시 */}
+                    <Text style={styles.debugText} selectable>
+                        URI: {kakaoRedirectUri || '(없음)'}
+                    </Text>
 
                     <View style={styles.footer}>
                         <Text style={styles.footerText}>계정이 없으신가요? </Text>
