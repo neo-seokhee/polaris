@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 입력 필드 기본 스타일 (웹) */
+input, textarea, [contenteditable] {
+    font-size: 12px !important;
+    color: #FFFFFF !important;
+    -webkit-text-fill-color: #FFFFFF !important;
+}
+
+input::placeholder, textarea::placeholder {
+    color: #6B6B70 !important;
+    -webkit-text-fill-color: #6B6B70 !important;
+}
