@@ -37,14 +37,14 @@ export function isKakaoConfigured(): boolean {
 }
 
 export function getKakaoAuthRequestConfig() {
+    // Expo Go에서는 proxy 사용, standalone에서는 native scheme 사용
     const redirectUri = AuthSession.makeRedirectUri({
         scheme: 'polaris',
         path: 'kakao-callback',
+        preferLocalhost: false,
+        // @ts-ignore - useProxy is deprecated but still works for Expo Go
+        useProxy: true,
     });
-
-    // 디버깅용 로그
-    console.log('[Kakao OAuth] Redirect URI:', redirectUri);
-    console.log('[Kakao OAuth] Client ID:', KAKAO_CLIENT_ID ? KAKAO_CLIENT_ID.substring(0, 8) + '...' : 'Not set');
 
     return {
         clientId: KAKAO_CLIENT_ID,
