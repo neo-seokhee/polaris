@@ -19,12 +19,6 @@ export default function LoginScreen() {
     };
 
     const handleKakaoLogin = async () => {
-        // DEV: Redirect URI 표시 (개발 중에만)
-        if (__DEV__) {
-            const config = getKakaoAuthRequestConfig();
-            console.log('Kakao Redirect URI:', config.redirectUri);
-        }
-
         setKakaoLoading(true);
         const { error } = await signInWithKakao();
         setKakaoLoading(false);
@@ -117,7 +111,7 @@ export default function LoginScreen() {
                             (!isKakaoAvailable || kakaoLoading) && styles.kakaoButtonDisabled,
                         ]}
                         onPress={handleKakaoLogin}
-                        onLongPress={__DEV__ ? showRedirectUri : undefined}
+                        onLongPress={showRedirectUri}
                         disabled={!isKakaoAvailable || kakaoLoading}
                     >
                         <Text style={styles.kakaoButtonText}>

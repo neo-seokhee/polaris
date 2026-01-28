@@ -41,6 +41,19 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "550e6aff-b1a1-4a58-b2bd-64626a79ea3f"
+      }
+    },
+    "owner": "neo_seokhee",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/550e6aff-b1a1-4a58-b2bd-64626a79ea3f"
     }
   }
 }
