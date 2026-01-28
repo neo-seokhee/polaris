@@ -119,6 +119,11 @@ export default function LoginScreen() {
                         </Text>
                     </Pressable>
 
+                    {/* Debug: Redirect URI 확인 */}
+                    <Pressable onPress={showRedirectUri}>
+                        <Text style={styles.debugText}>Redirect URI 확인</Text>
+                    </Pressable>
+
                     <View style={styles.footer}>
                         <Text style={styles.footerText}>계정이 없으신가요? </Text>
                         <Link href="/(auth)/signup" asChild>
@@ -233,6 +238,12 @@ const styles = StyleSheet.create({
     demoLinkText: {
         fontSize: FontSizes.sm,
         color: Colors.textMuted,
+        textDecorationLine: 'underline',
+    },
+    debugText: {
+        fontSize: FontSizes.xs,
+        color: Colors.textMuted,
+        textAlign: 'center',
         textDecorationLine: 'underline',
     },
 });
