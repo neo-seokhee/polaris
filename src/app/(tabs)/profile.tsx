@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, StyleSheet, Image, TouchableOpacity, Pressable, Alert, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Image, TouchableOpacity, Pressable, Alert, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
@@ -119,8 +119,18 @@ export default function ProfileScreen() {
                     <MenuItem
                         icon={<Info size={20} color={Colors.textMuted} />}
                         label="이용약관 및 개인정보처리방침"
-                        onPress={() => showAlert('준비중', '이용약관 페이지는 준비중입니다.')}
+                        onPress={() => Linking.openURL('https://www.notion.so/neolee/Polaris-2f86e247b03580499a70fb4edff6382d')}
                     />
+                </View>
+
+                {/* 사업자 정보 푸터 */}
+                <View style={styles.footerSection}>
+                    <Text style={styles.footerText}>
+                        Polaris(폴라리스) | 사업자명 : 더포지인더스트리(The Forge Industries)
+                    </Text>
+                    <Text style={styles.footerText}>
+                        사업자등록번호 : 241-25-02034 | 통신판매업신고번호 : 제 2024-서울송파-1849호
+                    </Text>
                 </View>
             </ScrollView>
         </SafeAreaView>
@@ -236,5 +246,17 @@ const styles = StyleSheet.create({
     menuItemLabel: {
         fontSize: FontSizes.base,
         color: Colors.textPrimary,
+    },
+    // 푸터 섹션
+    footerSection: {
+        alignItems: 'center',
+        paddingVertical: Spacing['2xl'],
+        paddingHorizontal: Spacing.lg,
+    },
+    footerText: {
+        fontSize: FontSizes.xs,
+        color: Colors.textMuted,
+        textAlign: 'center',
+        lineHeight: 18,
     },
 });

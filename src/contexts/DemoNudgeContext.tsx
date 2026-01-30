@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { SignupNudgeModal } from '@/components/SignupNudgeModal';
+import { DemoWelcomeModal } from '@/components/DemoWelcomeModal';
 import { useAuth } from './AuthContext';
 
 interface DemoNudgeContextType {
@@ -10,9 +11,22 @@ interface DemoNudgeContextType {
 const DemoNudgeContext = createContext<DemoNudgeContextType | undefined>(undefined);
 
 export function DemoNudgeProvider({ children }: { children: React.ReactNode }) {
-    const { isDemoMode } = useAuth();
+    const { isDemoMode, loading } = useAuth();
     const [nudgeVisible, setNudgeVisible] = useState(false);
+    const [welcomeVisible, setWelcomeVisible] = useState(false);
+    const [hasShownWelcome, setHasShownWelcome] = useState(false);
     const [actionName, setActionName] = useState<string>('이 기능을 사용');
+
+    useEffect(() => {
+        if (!loading && isDemoMode && !hasShownWelcome) {
+            setWelcomeVisible(true);
+            setHasShownWelcome(true);
+        }
+    }, [loading, isDemoMode, hasShownWelcome]);
+
+    const hideWelcome = useCallback(() => {
+        setWelcomeVisible(false);
+    }, []);
 
     const showNudge = useCallback((action?: string) => {
         if (action) {
@@ -38,6 +52,10 @@ export function DemoNudgeProvider({ children }: { children: React.ReactNode }) {
     return (
         <DemoNudgeContext.Provider value={{ showNudge, checkDemoAndNudge }}>
             {children}
+            <DemoWelcomeModal
+                visible={welcomeVisible}
+                onClose={hideWelcome}
+            />
             <SignupNudgeModal
                 visible={nudgeVisible}
                 onClose={hideNudge}
