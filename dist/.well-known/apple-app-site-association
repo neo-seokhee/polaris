@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "9G54P6X7YU.com.theforgeindustries.polaris",
+        "paths": ["/kakao-callback", "/kakao-callback/*"]
+      }
+    ]
+  }
+}
