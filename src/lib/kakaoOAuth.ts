@@ -1,17 +1,12 @@
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
 // Kakao OAuth endpoints
-const KAKAO_AUTH_ENDPOINT = 'https://kauth.kakao.com/oauth/authorize';
 const KAKAO_TOKEN_ENDPOINT = 'https://kauth.kakao.com/oauth/token';
 const KAKAO_USER_INFO_ENDPOINT = 'https://kapi.kakao.com/v2/user/me';
 
 // Environment variables
 const KAKAO_CLIENT_ID = process.env.EXPO_PUBLIC_KAKAO_CLIENT_ID || '';
 const KAKAO_CLIENT_SECRET = process.env.EXPO_PUBLIC_KAKAO_CLIENT_SECRET || '';
-
-WebBrowser.maybeCompleteAuthSession();
 
 export interface KakaoTokens {
     access_token: string;
@@ -37,26 +32,26 @@ export function isKakaoConfigured(): boolean {
 }
 
 export function getKakaoAuthRequestConfig() {
-    // Expo Go에서는 proxy 사용, standalone에서는 native scheme 사용
-    const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'polaris',
-        path: 'kakao-callback',
-        preferLocalhost: false,
-        // @ts-ignore - useProxy is deprecated but still works for Expo Go
-        useProxy: true,
-    });
+    // 모든 플랫폼에서 웹 URL 사용 (카카오 콘솔에 등록 가능)
+    // iOS에서는 Safari로 인증 후, 웹 페이지에서 토큰 교환 완료 후 앱으로 deep link
+    let redirectUri: string;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        // 웹: 현재 origin에서 /kakao-callback 경로 사용 (localhost 개발 지원)
+        redirectUri = `${window.location.origin}/kakao-callback`;
+    } else {
+        // 모바일 (iOS/Android): 웹 URL 사용
+        // 카카오 콘솔에 custom scheme 등록 불가하므로 웹 URL로 리다이렉트
+        // 웹 페이지에서 토큰 교환 후 polaris://auth-callback으로 앱 복귀
+        redirectUri = 'https://gopolaris.app/kakao-callback';
+    }
+
+    console.log('[Kakao] Redirect URI:', redirectUri);
 
     return {
         clientId: KAKAO_CLIENT_ID,
         redirectUri,
         scopes: ['profile_nickname', 'account_email'],
-    };
-}
-
-export function getKakaoDiscovery(): AuthSession.DiscoveryDocument {
-    return {
-        authorizationEndpoint: KAKAO_AUTH_ENDPOINT,
-        tokenEndpoint: KAKAO_TOKEN_ENDPOINT,
     };
 }
 
