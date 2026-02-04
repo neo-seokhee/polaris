@@ -392,11 +392,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             // iOS/Android: 인앱 브라우저(ASWebAuthenticationSession)로 카카오 인증
-            // openAuthSessionAsync는 redirectUri로 리다이렉트되면 자동으로 브라우저 닫힘
+            // 흐름: 카카오 인증 → gopolaris.app/kakao-callback (웹에서 토큰 교환)
+            //      → polaris://auth-callback (토큰과 함께 앱으로 복귀)
+            // openAuthSessionAsync는 polaris:// 스킴을 감지하면 브라우저 닫고 URL 반환
             console.log('[Kakao Login] Opening in-app browser for auth...');
             const result = await WebBrowser.openAuthSessionAsync(
                 authUrl,
-                kakaoConfig.redirectUri  // https://gopolaris.app/kakao-callback
+                'polaris://auth-callback'  // 웹 페이지가 최종적으로 리다이렉트하는 URL
             );
 
             if (result.type !== 'success' || !result.url) {
@@ -406,11 +408,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { error: new Error('카카오 인증에 실패했습니다.') };
             }
 
-            // URL에서 code 추출
+            console.log('[Kakao Login] Got result URL:', result.url);
             const url = new URL(result.url);
+
+            // Case 1: 웹 페이지에서 이미 로그인 완료 후 토큰과 함께 앱으로 리다이렉트된 경우
+            // URL: polaris://auth-callback?access_token=...&refresh_token=...
+            const accessToken = url.searchParams.get('access_token');
+            const refreshToken = url.searchParams.get('refresh_token');
+            if (accessToken && refreshToken) {
+                console.log('[Kakao Login] Got tokens from web callback, setting session...');
+                const { data, error } = await supabase.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                });
+
+                if (error) {
+                    console.log('[Kakao Login] Session restore error:', error.message);
+                    return { error };
+                }
+
+                if (data.user) {
+                    console.log('[Kakao Login] Session restored for user:', data.user.id);
+                    trackEvent('user_signed_in', { auth_method: 'kakao' });
+                    identifyUser(data.user.id, { email: data.user.email });
+                }
+                return { error: null };
+            }
+
+            // Case 2: 카카오에서 바로 앱으로 리다이렉트된 경우 (code 포함)
+            // URL: https://gopolaris.app/kakao-callback?code=...
             const code = url.searchParams.get('code');
             if (!code) {
-                const errorMsg = url.searchParams.get('error_description') || '인증 코드가 없습니다.';
+                // 웹 콜백에서 에러가 발생했거나 토큰/코드가 없는 경우
+                const errorMsg = url.searchParams.get('error_description')
+                    || url.searchParams.get('error')
+                    || '카카오 로그인 처리 중 오류가 발생했습니다.';
+                console.log('[Kakao Login] No code or tokens found in URL:', result.url);
                 return { error: new Error(errorMsg) };
             }
 
