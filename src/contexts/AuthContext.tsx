@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import {
     isKakaoConfigured,
     getKakaoAuthRequestConfig,
+    exchangeKakaoCodeForTokens,
+    getKakaoUserInfo,
 } from '@/lib/kakaoOAuth';
 import {
     signInWithApple as appleSignIn,
@@ -60,7 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Kakao OAuth config
     const kakaoConfig = getKakaoAuthRequestConfig();
 
-    // Deep link listener for auth callback (iOS에서 Safari 인증 후 앱 복귀)
+    // Deep link listener for general auth callbacks
+    // Note: 카카오 로그인은 이제 WebBrowser.openAuthSessionAsync를 사용하므로
+    // 이 리스너는 다른 인증 방식이나 외부 링크 처리용으로 유지
     useEffect(() => {
         const handleDeepLink = async (event: { url: string }) => {
             console.log('[DeepLink] Received URL:', event.url);
@@ -83,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             console.log('[DeepLink] Session restore error:', error.message);
                         } else if (data.user) {
                             console.log('[DeepLink] Session restored for user:', data.user.id);
-                            trackEvent('user_signed_in', { auth_method: 'kakao' });
+                            trackEvent('user_signed_in', { auth_method: 'deep_link' });
                             identifyUser(data.user.id, { email: data.user.email });
                         }
                     }
@@ -387,19 +391,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { error: null };
             }
 
-            // iOS/Android: Safari로 인증 페이지 열기
-            // 인증 완료 후 https://gopolaris.app/kakao-callback으로 리다이렉트
-            // 웹 페이지에서 토큰 교환 후 polaris://auth-callback으로 앱 복귀
-            // Deep link 리스너에서 세션 복원 처리
-            console.log('[Kakao Login] Opening browser for auth...');
-            await WebBrowser.openBrowserAsync(authUrl, {
-                dismissButtonStyle: 'cancel',
-                showInRecents: true,
+            // iOS/Android: 인앱 브라우저(ASWebAuthenticationSession)로 카카오 인증
+            // openAuthSessionAsync는 redirectUri로 리다이렉트되면 자동으로 브라우저 닫힘
+            console.log('[Kakao Login] Opening in-app browser for auth...');
+            const result = await WebBrowser.openAuthSessionAsync(
+                authUrl,
+                kakaoConfig.redirectUri  // https://gopolaris.app/kakao-callback
+            );
+
+            if (result.type !== 'success' || !result.url) {
+                if (result.type === 'cancel') {
+                    return { error: new Error('로그인이 취소되었습니다.') };
+                }
+                return { error: new Error('카카오 인증에 실패했습니다.') };
+            }
+
+            // URL에서 code 추출
+            const url = new URL(result.url);
+            const code = url.searchParams.get('code');
+            if (!code) {
+                const errorMsg = url.searchParams.get('error_description') || '인증 코드가 없습니다.';
+                return { error: new Error(errorMsg) };
+            }
+
+            console.log('[Kakao Login] Got auth code, exchanging for tokens...');
+
+            // 앱에서 직접 토큰 교환
+            const tokens = await exchangeKakaoCodeForTokens(code, kakaoConfig.redirectUri);
+            console.log('[Kakao Login] Got tokens, fetching user info...');
+
+            const kakaoUser = await getKakaoUserInfo(tokens.access_token);
+            console.log('[Kakao Login] Got user info, kakao_id:', kakaoUser.id);
+
+            const email = kakaoUser.kakao_account?.email;
+            if (!email) {
+                return { error: new Error('이메일 정보를 가져올 수 없습니다. 카카오 계정에 이메일이 등록되어 있는지 확인해주세요.') };
+            }
+
+            // Supabase 로그인 시도
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+                email,
+                password: `kakao_${kakaoUser.id}`,
             });
 
-            // 브라우저에서 돌아온 후 - 실제 로그인 처리는 deep link 리스너에서 수행
-            // 사용자가 취소했거나 성공했는지는 여기서 알 수 없음
-            console.log('[Kakao Login] Browser closed, waiting for deep link callback...');
+            if (signInError) {
+                console.log('[Kakao Login] Sign in failed, attempting sign up...');
+                // 신규 회원가입
+                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                    email,
+                    password: `kakao_${kakaoUser.id}`,
+                    options: {
+                        data: {
+                            name: kakaoUser.kakao_account?.profile?.nickname || email.split('@')[0],
+                            kakao_id: kakaoUser.id.toString(),
+                        },
+                    },
+                });
+
+                if (signUpError) {
+                    console.log('[Kakao Login] Sign up error:', signUpError.message);
+                    return { error: signUpError };
+                }
+
+                if (signUpData.user) {
+                    console.log('[Kakao Login] Sign up successful');
+                    trackEvent('user_signed_up', { auth_method: 'kakao' });
+                    identifyUser(signUpData.user.id, { email, name: kakaoUser.kakao_account?.profile?.nickname });
+                    notifySlack('user_signed_up', { email, name: kakaoUser.kakao_account?.profile?.nickname, auth_method: 'kakao' });
+                }
+            } else {
+                console.log('[Kakao Login] Sign in successful');
+                trackEvent('user_signed_in', { auth_method: 'kakao' });
+            }
+
             return { error: null };
         } catch (error) {
             console.log('[Kakao Login] Error:', error);
