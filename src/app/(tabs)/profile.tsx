@@ -1,10 +1,14 @@
 import { View, Text, ScrollView, StyleSheet, Image, TouchableOpacity, Pressable, Alert, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useState, useEffect } from "react";
 import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
+import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { supabase } from "@/lib/supabase";
 import { Settings, Bell, MessageSquare, Info, ChevronRight, Sparkles } from "lucide-react-native";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
 import { DemoBanner } from "@/components/DemoBanner";
+import { FeedbackModal } from "@/components/FeedbackModal";
 
 interface MenuItemProps {
     icon: React.ReactNode;
@@ -25,7 +29,25 @@ function MenuItem({ icon, label, onPress }: MenuItemProps) {
 }
 
 export default function ProfileScreen() {
+    useScreenTracking('screen_profile');
+
     const { user, signOut, signInWithKakao, isKakaoAvailable, isDemoMode, exitDemoMode } = useAuth();
+    const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
+    const [userPhone, setUserPhone] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (user?.id) {
+            supabase
+                .from('users')
+                .select('phone')
+                .eq('id', user.id)
+                .single()
+                .then(({ data, error }) => {
+                    console.log('[Profile] Fetched phone:', data?.phone, 'error:', error?.message);
+                    setUserPhone(data?.phone || null);
+                });
+        }
+    }, [user?.id]);
 
     const showAlert = (title: string, message: string) => {
         if (Platform.OS === 'web') {
@@ -50,6 +72,8 @@ export default function ProfileScreen() {
             router.push('/(auth)/login');
         }
     };
+
+
 
     return (
         <SafeAreaView style={styles.container}>
@@ -97,14 +121,41 @@ export default function ProfileScreen() {
                                         : '로그인'}
                         </Text>
                     </TouchableOpacity>
+                    {isDemoMode && (
+                        <TouchableOpacity
+                            style={styles.secondaryButton}
+                            onPress={() => {
+                                exitDemoMode();
+                                router.push('/(auth)/login');
+                            }}
+                        >
+                            <Text style={styles.secondaryButtonText}>이미 계정이 있으신가요? 로그인</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
+
+                {/* 디버그 섹션 (테스트용) */}
+                {user && !isDemoMode && (
+                    <View style={styles.debugSection}>
+                        <Text style={styles.debugTitle}>로그인 정보 (테스트용)</Text>
+                        <Text style={styles.debugText}>이메일: {user.email}</Text>
+                        <Text style={styles.debugText}>
+                            로그인 방식: {user.user_metadata?.kakao_id ? '카카오' : user.user_metadata?.apple_user_id ? 'Apple' : '이메일'}
+                        </Text>
+                        {user.user_metadata?.kakao_id && (
+                            <Text style={styles.debugText}>카카오 ID: {user.user_metadata.kakao_id}</Text>
+                        )}
+                        <Text style={styles.debugText}>이름: {user.user_metadata?.name || '없음'}</Text>
+                        <Text style={styles.debugText}>User ID: {user.id.substring(0, 8)}...</Text>
+                    </View>
+                )}
 
                 {/* 메뉴 섹션 */}
                 <View style={styles.menuSection}>
                     <MenuItem
                         icon={<Settings size={20} color={Colors.textMuted} />}
                         label="설정"
-                        onPress={() => showAlert('준비중', '설정 기능은 준비중입니다.')}
+                        onPress={() => router.push('/settings')}
                     />
                     <MenuItem
                         icon={<Bell size={20} color={Colors.textMuted} />}
@@ -114,7 +165,7 @@ export default function ProfileScreen() {
                     <MenuItem
                         icon={<MessageSquare size={20} color={Colors.textMuted} />}
                         label="의견 보내기"
-                        onPress={() => showAlert('준비중', '의견 보내기 기능은 준비중입니다.')}
+                        onPress={() => setFeedbackModalVisible(true)}
                     />
                     <MenuItem
                         icon={<Info size={20} color={Colors.textMuted} />}
@@ -133,6 +184,15 @@ export default function ProfileScreen() {
                     </Text>
                 </View>
             </ScrollView>
+
+            <FeedbackModal
+                visible={feedbackModalVisible}
+                onClose={() => setFeedbackModalVisible(false)}
+                userEmail={user?.email}
+                userPhone={userPhone}
+            />
+
+
         </SafeAreaView>
     );
 }
@@ -209,6 +269,14 @@ const styles = StyleSheet.create({
     loginButtonText: {
         color: Colors.textOnDark,
     },
+    secondaryButton: {
+        paddingVertical: Spacing.lg,
+    },
+    secondaryButtonText: {
+        fontSize: FontSizes.sm,
+        color: Colors.textMuted,
+        textDecorationLine: 'underline',
+    },
     demoModeIndicator: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -247,6 +315,26 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.base,
         color: Colors.textPrimary,
     },
+    // 디버그 섹션
+    debugSection: {
+        backgroundColor: '#1a1a2e',
+        borderRadius: BorderRadius.xl,
+        padding: Spacing['2xl'],
+        borderWidth: 1,
+        borderColor: '#4a4a6a',
+    },
+    debugTitle: {
+        fontSize: FontSizes.sm,
+        fontWeight: '600',
+        color: '#8b8bab',
+        marginBottom: Spacing.lg,
+    },
+    debugText: {
+        fontSize: FontSizes.xs,
+        color: '#6b6b8b',
+        marginBottom: Spacing.sm,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
     // 푸터 섹션
     footerSection: {
         alignItems: 'center',
@@ -259,4 +347,5 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 18,
     },
+
 });
