@@ -1,60 +1,96 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
 
+const showAlert = (title: string, message: string, onConfirm?: () => void) => {
+    if (Platform.OS === 'web') {
+        window.alert(`${title}\n\n${message}`);
+        onConfirm?.();
+    } else {
+        if (onConfirm) {
+            Alert.alert(title, message, [{ text: "확인", onPress: onConfirm }]);
+        } else {
+            Alert.alert(title, message);
+        }
+    }
+};
+
 export default function SignupScreen() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
+    const [phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
-    const [kakaoLoading, setKakaoLoading] = useState(false);
-    const { signUp, signInWithKakao, isKakaoAvailable } = useAuth();
+    const { signUp } = useAuth();
 
-    const handleKakaoSignup = async () => {
-        setKakaoLoading(true);
-        const { error } = await signInWithKakao();
-        setKakaoLoading(false);
+    const formatPhoneNumber = (text: string) => {
+        // Remove all non-digit characters
+        const cleaned = text.replace(/\D/g, '');
 
-        if (error) {
-            if (error.message !== '로그인이 취소되었습니다.') {
-                Alert.alert("카카오 회원가입 실패", error.message);
-            }
+        // Format as 010-1234-5678
+        if (cleaned.length <= 3) {
+            return cleaned;
+        } else if (cleaned.length <= 7) {
+            return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
         } else {
-            router.replace("/(tabs)");
+            return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 11)}`;
         }
     };
 
+    const handlePhoneChange = (text: string) => {
+        const formatted = formatPhoneNumber(text);
+        setPhone(formatted);
+    };
+
+    const isValidPhoneNumber = (phone: string) => {
+        // Check format: 010-1234-5678
+        const phoneRegex = /^010-\d{4}-\d{4}$/;
+        return phoneRegex.test(phone);
+    };
+
     const handleSignup = async () => {
-        if (!name || !email || !password || !confirmPassword) {
-            Alert.alert("오류", "모든 필드를 입력해주세요.");
+        const missingFields: string[] = [];
+        if (!name.trim()) missingFields.push("이름");
+        if (!email.trim()) missingFields.push("이메일");
+        if (!phone.trim()) missingFields.push("휴대전화번호");
+        if (!password) missingFields.push("비밀번호");
+        if (!confirmPassword) missingFields.push("비밀번호 확인");
+
+        if (missingFields.length > 0) {
+            showAlert("오류", `다음 항목을 입력해주세요:\n${missingFields.join(", ")}`);
+            return;
+        }
+
+        if (!isValidPhoneNumber(phone)) {
+            showAlert("오류", "휴대전화번호 형식이 올바르지 않습니다. (예: 010-1234-5678)");
             return;
         }
 
         if (password !== confirmPassword) {
-            Alert.alert("오류", "비밀번호가 일치하지 않습니다.");
+            showAlert("오류", "비밀번호가 일치하지 않습니다.");
             return;
         }
 
         if (password.length < 6) {
-            Alert.alert("오류", "비밀번호는 최소 6자 이상이어야 합니다.");
+            showAlert("오류", "비밀번호는 최소 6자 이상이어야 합니다.");
             return;
         }
 
         setLoading(true);
-        const { error } = await signUp(email, password, name);
+        const { error } = await signUp(email, password, name, phone);
         setLoading(false);
 
         if (error) {
-            Alert.alert("회원가입 실패", error.message);
+            showAlert("회원가입 실패", error.message);
         } else {
-            Alert.alert(
+            showAlert(
                 "회원가입 성공",
                 "이메일을 확인하여 계정을 인증해주세요.",
-                [{ text: "확인", onPress: () => router.replace("/(auth)/login") }]
+                () => router.replace("/(auth)/login")
             );
         }
     };
@@ -63,32 +99,23 @@ export default function SignupScreen() {
         <SafeAreaView style={styles.container}>
             <View style={styles.content}>
                 <View style={styles.header}>
-                    <Text style={styles.title}>회원가입</Text>
+                    <Text style={styles.title}>이메일로 회원가입</Text>
                     <Text style={styles.subtitle}>Polaris와 함께 시작하세요</Text>
                 </View>
 
                 <View style={styles.form}>
                     <Pressable
-                        style={[
-                            styles.kakaoButton,
-                            (!isKakaoAvailable || kakaoLoading) && styles.kakaoButtonDisabled,
-                        ]}
-                        onPress={handleKakaoSignup}
-                        disabled={!isKakaoAvailable || kakaoLoading}
+                        style={styles.backButton}
+                        onPress={() => router.push('/(tabs)/profile')}
                     >
-                        <Text style={styles.kakaoButtonText}>
-                            {kakaoLoading ? "가입 중..." : isKakaoAvailable ? "카카오로 시작하기" : "카카오 회원가입 (준비중)"}
-                        </Text>
+                        <Text style={styles.backButtonText}>← 돌아가기</Text>
                     </Pressable>
 
-                    <View style={styles.divider}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerText}>또는</Text>
-                        <View style={styles.dividerLine} />
-                    </View>
-
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>이름</Text>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>이름</Text>
+                            <Text style={styles.required}>*</Text>
+                        </View>
                         <TextInput
                             style={styles.input}
                             placeholder="이름을 입력하세요"
@@ -100,7 +127,10 @@ export default function SignupScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>이메일</Text>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>이메일</Text>
+                            <Text style={styles.required}>*</Text>
+                        </View>
                         <TextInput
                             style={styles.input}
                             placeholder="이메일을 입력하세요"
@@ -114,7 +144,27 @@ export default function SignupScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>비밀번호</Text>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>휴대전화번호</Text>
+                            <Text style={styles.required}>*</Text>
+                        </View>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="010-1234-5678"
+                            placeholderTextColor={Colors.textMuted}
+                            value={phone}
+                            onChangeText={handlePhoneChange}
+                            keyboardType="phone-pad"
+                            autoCapitalize="none"
+                            maxLength={13}
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>비밀번호</Text>
+                            <Text style={styles.required}>*</Text>
+                        </View>
                         <TextInput
                             style={styles.input}
                             placeholder="비밀번호를 입력하세요 (최소 6자)"
@@ -127,7 +177,10 @@ export default function SignupScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>비밀번호 확인</Text>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>비밀번호 확인</Text>
+                            <Text style={styles.required}>*</Text>
+                        </View>
                         <TextInput
                             style={styles.input}
                             placeholder="비밀번호를 다시 입력하세요"
@@ -193,10 +246,20 @@ const styles = StyleSheet.create({
     inputGroup: {
         gap: Spacing.md,
     },
+    labelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
     label: {
         fontSize: FontSizes.sm,
         fontWeight: '600',
         color: Colors.textPrimary,
+    },
+    required: {
+        color: '#ef4444',
+        fontSize: FontSizes.sm,
+        fontWeight: '600',
     },
     input: {
         backgroundColor: Colors.bgSecondary,
@@ -222,35 +285,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Colors.textOnDark,
     },
-    kakaoButton: {
-        backgroundColor: '#FEE500',
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
-        alignItems: 'center',
-    },
-    kakaoButtonDisabled: {
-        backgroundColor: Colors.bgTertiary,
-        opacity: 0.5,
-    },
-    kakaoButtonText: {
-        fontSize: FontSizes.base,
-        fontWeight: '600',
-        color: '#191919',
-    },
-    divider: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.lg,
-    },
-    dividerLine: {
-        flex: 1,
-        height: 1,
-        backgroundColor: Colors.borderPrimary,
-    },
-    dividerText: {
-        fontSize: FontSizes.sm,
-        color: Colors.textMuted,
-    },
     footer: {
         flexDirection: 'row',
         justifyContent: 'center',
@@ -265,5 +299,14 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.sm,
         fontWeight: '600',
         color: Colors.accent,
+    },
+    backButton: {
+        alignSelf: 'flex-start',
+        marginBottom: Spacing.lg,
+    },
+    backButtonText: {
+        fontSize: FontSizes.base,
+        color: Colors.accent,
+        fontWeight: '600',
     },
 });

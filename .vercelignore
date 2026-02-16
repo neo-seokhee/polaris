@@ -1,0 +1,14 @@
+# Native directories (not needed for web)
+ios/
+android/
+
+# Dependencies (Vercel installs automatically)
+node_modules/
+
+# Build caches
+.expo/
+.turbo/
+
+# Development files
+*.log
+.DS_Store

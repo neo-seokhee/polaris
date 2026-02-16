@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Modal, Keyboard, Pressable, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Modal, Keyboard, Pressable, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { X, ChevronRight } from "lucide-react-native";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
 import type { Category } from "@/hooks/useCategories";
+import { sanitizeRichHtml } from "@/lib/richText";
 
 interface AddMemoModalProps {
     visible: boolean;
@@ -38,7 +39,7 @@ export function AddMemoModal({ visible, onClose, onAdd, categories }: AddMemoMod
 
     const handleSave = () => {
         if (selectedCategory) {
-            onAdd(content, selectedCategory.label, selectedCategory.color);
+            onAdd(sanitizeRichHtml(content), selectedCategory.label, selectedCategory.color);
             setContent("");
             setSelectedCategory(categories[0] || null);
             setShowCategoryModal(false);
@@ -69,36 +70,41 @@ export function AddMemoModal({ visible, onClose, onAdd, categories }: AddMemoMod
                 onRequestClose={handleClose}
             >
                 <GestureHandlerRootView style={styles.overlay}>
-                    <View style={styles.modal}>
-                        <View style={styles.header}>
-                            <Text style={styles.title}>새 메모</Text>
-                            <TouchableOpacity onPress={handleClose}>
-                                <X size={24} color={Colors.textMuted} />
-                            </TouchableOpacity>
-                        </View>
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={styles.keyboardAvoidingView}
+                    >
+                        <View style={styles.modal}>
+                            <View style={styles.header}>
+                                <Text style={styles.title}>새 메모</Text>
+                                <TouchableOpacity onPress={handleClose}>
+                                    <X size={24} color={Colors.textMuted} />
+                                </TouchableOpacity>
+                            </View>
 
-                        <View style={styles.editorContainer}>
-                            <RichTextEditor
-                                value={content}
-                                onChange={setContent}
-                                placeholder="메모 내용을 입력하세요"
-                                minHeight={300}
-                            />
-                        </View>
+                            <View style={styles.editorContainer}>
+                                <RichTextEditor
+                                    value={content}
+                                    onChange={setContent}
+                                    placeholder="메모 내용을 입력하세요"
+                                    minHeight={300}
+                                />
+                            </View>
 
-                        <Pressable
-                            style={({ pressed }) => [
-                                styles.button,
-                                isContentEmpty && styles.buttonDisabled,
-                                pressed && !isContentEmpty && styles.buttonPressed,
-                            ]}
-                            onPress={handleNext}
-                            disabled={isContentEmpty}
-                        >
-                            <Text style={styles.buttonText}>다음</Text>
-                            <ChevronRight size={20} color={Colors.textOnDark} />
-                        </Pressable>
-                    </View>
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.button,
+                                    isContentEmpty && styles.buttonDisabled,
+                                    pressed && !isContentEmpty && styles.buttonPressed,
+                                ]}
+                                onPress={handleNext}
+                                disabled={isContentEmpty}
+                            >
+                                <Text style={[styles.buttonText, isContentEmpty && styles.buttonTextDisabled]}>다음</Text>
+                                <ChevronRight size={20} color={isContentEmpty ? Colors.textMuted : Colors.textOnDark} />
+                            </Pressable>
+                        </View>
+                    </KeyboardAvoidingView>
                 </GestureHandlerRootView>
             </Modal>
 
@@ -147,13 +153,14 @@ export function AddMemoModal({ visible, onClose, onAdd, categories }: AddMemoMod
                         <Pressable
                             style={({ pressed }) => [
                                 styles.button,
+                                styles.buttonFull,
                                 !selectedCategory && styles.buttonDisabled,
                                 pressed && selectedCategory && styles.buttonPressed,
                             ]}
                             onPress={handleSave}
                             disabled={!selectedCategory}
                         >
-                            <Text style={styles.buttonText}>저장</Text>
+                            <Text style={[styles.buttonText, !selectedCategory && styles.buttonTextDisabled]}>저장</Text>
                         </Pressable>
                     </View>
                 </GestureHandlerRootView>
@@ -166,6 +173,9 @@ const styles = StyleSheet.create({
     overlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    },
+    keyboardAvoidingView: {
+        flex: 1,
         justifyContent: 'flex-end',
     },
     modal: {
@@ -192,6 +202,7 @@ const styles = StyleSheet.create({
         fontSize: FontSizes['2xl'],
         fontWeight: '700',
         color: Colors.textPrimary,
+        flexShrink: 1,
     },
     editorContainer: {
         marginBottom: Spacing['2xl'],
@@ -230,13 +241,19 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.accent,
         padding: Spacing['2xl'],
         borderRadius: BorderRadius.lg,
+        alignSelf: 'stretch',
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
         gap: Spacing.sm,
     },
+    buttonFull: {
+        width: '100%',
+    },
     buttonDisabled: {
-        opacity: 0.5,
+        backgroundColor: Colors.bgMuted,
+        borderWidth: 1,
+        borderColor: Colors.borderPrimary,
     },
     buttonPressed: {
         opacity: 0.8,
@@ -245,5 +262,8 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.base,
         fontWeight: '600',
         color: Colors.textOnDark,
+    },
+    buttonTextDisabled: {
+        color: Colors.textMuted,
     },
 });

@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
+import { notifySlack } from '@/lib/slackNotify';
 import type { Database } from '@/lib/database.types';
 import { DEMO_TODOS } from '@/data/demoData';
 
@@ -10,12 +12,13 @@ type TodoUpdate = Database['public']['Tables']['todos']['Update'];
 
 export function useTodos() {
     const { user, isDemoMode } = useAuth();
+    const { track } = useAnalytics();
     const [todos, setTodos] = useState<Todo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // Fetch todos
-    const fetchTodos = async () => {
+    const fetchTodos = useCallback(async () => {
         if (isDemoMode) {
             setTodos(DEMO_TODOS as Todo[]);
             setLoading(false);
@@ -38,10 +41,10 @@ export function useTodos() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [isDemoMode, user]);
 
     // Add todo
-    const addTodo = async (title: string) => {
+    const addTodo = async (title: string, memo?: string | null) => {
         if (isDemoMode) return { error: null, demoBlocked: true };
         if (!user) return { error: 'User not authenticated' };
 
@@ -49,6 +52,7 @@ export function useTodos() {
             const newTodo: TodoInsert = {
                 user_id: user.id,
                 title,
+                memo: memo || null,
                 is_active: false,
                 is_completed: false,
             };
@@ -63,6 +67,8 @@ export function useTodos() {
 
             // Optimistic update
             setTodos((prev) => [data, ...prev]);
+            track('todo_created', { title_length: title.length });
+            notifySlack('todo_created', { userId: user.id }, title);
             return { data, error: null };
         } catch (err: any) {
             setError(err.message);
@@ -74,9 +80,11 @@ export function useTodos() {
     const toggleCompleted = async (id: string, isCompleted: boolean) => {
         if (isDemoMode) return { demoBlocked: true };
         try {
+            const currentTodo = todos.find((todo) => todo.id === id);
+            const nextCompleted = !isCompleted;
             const { error } = await supabase
                 .from('todos')
-                .update({ is_completed: !isCompleted })
+                .update({ is_completed: nextCompleted })
                 .eq('id', id);
 
             if (error) throw error;
@@ -84,9 +92,17 @@ export function useTodos() {
             // Optimistic update
             setTodos((prev) =>
                 prev.map((todo) =>
-                    todo.id === id ? { ...todo, is_completed: !isCompleted } : todo
+                    todo.id === id ? { ...todo, is_completed: nextCompleted } : todo
                 )
             );
+            track(isCompleted ? 'todo_uncompleted' : 'todo_completed');
+            if (user?.id) {
+                notifySlack(
+                    'todo_status_changed',
+                    { userId: user.id },
+                    `${currentTodo?.title || '할 일'} · ${nextCompleted ? '완료' : '미완료'}`
+                );
+            }
         } catch (err: any) {
             setError(err.message);
         }
@@ -96,9 +112,11 @@ export function useTodos() {
     const toggleActive = async (id: string, isActive: boolean) => {
         if (isDemoMode) return { demoBlocked: true };
         try {
+            const currentTodo = todos.find((todo) => todo.id === id);
+            const nextActive = !isActive;
             const { error } = await supabase
                 .from('todos')
-                .update({ is_active: !isActive })
+                .update({ is_active: nextActive })
                 .eq('id', id);
 
             if (error) throw error;
@@ -106,21 +124,93 @@ export function useTodos() {
             // Optimistic update
             setTodos((prev) =>
                 prev.map((todo) =>
-                    todo.id === id ? { ...todo, is_active: !isActive } : todo
+                    todo.id === id ? { ...todo, is_active: nextActive } : todo
                 )
             );
+            track('todo_active_toggled', { is_active: nextActive });
+            if (user?.id) {
+                notifySlack(
+                    'todo_priority_changed',
+                    { userId: user.id },
+                    `${currentTodo?.title || '할 일'} · ${nextActive ? '중요 ON' : '중요 OFF'}`
+                );
+            }
+            return { error: null };
+        } catch (err: any) {
+            setError(err.message);
+            return { error: err.message };
+        }
+    };
+
+    // Set active explicitly (used when we must guarantee important=true)
+    const setActive = async (id: string, active: boolean) => {
+        if (isDemoMode) return { demoBlocked: true };
+        try {
+            const currentTodo = todos.find((todo) => todo.id === id);
+            const { error } = await supabase
+                .from('todos')
+                .update({ is_active: active })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            setTodos((prev) =>
+                prev.map((todo) =>
+                    todo.id === id ? { ...todo, is_active: active } : todo
+                )
+            );
+            track('todo_active_set', { is_active: active });
+            if (user?.id) {
+                notifySlack(
+                    'todo_priority_changed',
+                    { userId: user.id },
+                    `${currentTodo?.title || '할 일'} · ${active ? '중요 ON' : '중요 OFF'}`
+                );
+            }
+            return { error: null };
+        } catch (err: any) {
+            setError(err.message);
+            return { error: err.message };
+        }
+    };
+
+    // Update todo
+    const updateTodo = async (id: string, title: string, memo?: string | null) => {
+        if (isDemoMode) return { demoBlocked: true };
+        try {
+            const updateData: TodoUpdate = { title };
+            if (memo !== undefined) {
+                updateData.memo = memo;
+            }
+
+            const { error } = await supabase
+                .from('todos')
+                .update(updateData)
+                .eq('id', id);
+
+            if (error) throw error;
+
+            // Optimistic update
+            setTodos((prev) =>
+                prev.map((todo) =>
+                    todo.id === id
+                        ? { ...todo, title, ...(memo !== undefined ? { memo } : {}) }
+                        : todo
+                )
+            );
+            track('todo_updated', { has_memo: memo !== undefined });
         } catch (err: any) {
             setError(err.message);
         }
     };
 
-    // Update todo
-    const updateTodo = async (id: string, title: string) => {
+    // Update todo category
+    const updateTodoCategory = async (id: string, category: string | null) => {
         if (isDemoMode) return { demoBlocked: true };
         try {
             const { error } = await supabase
                 .from('todos')
-                .update({ title })
+                .update({ category })
                 .eq('id', id);
 
             if (error) throw error;
@@ -128,12 +218,22 @@ export function useTodos() {
             // Optimistic update
             setTodos((prev) =>
                 prev.map((todo) =>
-                    todo.id === id ? { ...todo, title } : todo
+                    todo.id === id ? { ...todo, category } : todo
                 )
             );
+            track('todo_category_updated', { has_category: !!category });
         } catch (err: any) {
             setError(err.message);
         }
+    };
+
+    // Clear category from all todos (when category is deleted)
+    const clearCategoryFromTodos = (categoryName: string) => {
+        setTodos((prev) =>
+            prev.map((todo) =>
+                todo.category === categoryName ? { ...todo, category: null } : todo
+            )
+        );
     };
 
     // Delete todo
@@ -149,6 +249,7 @@ export function useTodos() {
 
             // Optimistic update
             setTodos((prev) => prev.filter((todo) => todo.id !== id));
+            track('todo_deleted');
         } catch (err: any) {
             setError(err.message);
         }
@@ -160,6 +261,7 @@ export function useTodos() {
         const reorderedIds = new Set(reorderedItems.map(t => t.id));
         const otherItems = todos.filter(t => !reorderedIds.has(t.id));
         setTodos([...reorderedItems, ...otherItems]);
+        track('todos_reordered', { count: reorderedItems.length });
     };
 
     // Subscribe to realtime changes
@@ -213,7 +315,7 @@ export function useTodos() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user, isDemoMode]);
+    }, [user, isDemoMode, fetchTodos]);
 
     return {
         todos,
@@ -222,8 +324,11 @@ export function useTodos() {
         isDemoMode,
         addTodo,
         updateTodo,
+        updateTodoCategory,
+        clearCategoryFromTodos,
         toggleCompleted,
         toggleActive,
+        setActive,
         deleteTodo,
         reorderTodos,
         refetch: fetchTodos,

@@ -14,6 +14,7 @@ interface MemoCardProps {
     onPress: (id: string, content: string, category: string, categoryColor: string) => void;
     onToggleStar: (id: string, isStarred: boolean) => void;
     drag?: () => void;
+    enableDrag?: boolean;
 }
 
 export function MemoCard({
@@ -26,6 +27,7 @@ export function MemoCard({
     onPress,
     onToggleStar,
     drag,
+    enableDrag = false,
 }: MemoCardProps) {
     const { width } = useWindowDimensions();
     const [expanded, setExpanded] = useState(false);
@@ -59,7 +61,7 @@ export function MemoCard({
         >
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
-                    {drag && (
+                    {(drag || enableDrag) && (
                         <TouchableOpacity
                             onLongPress={drag}
                             delayLongPress={100}

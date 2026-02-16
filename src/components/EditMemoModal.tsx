@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Modal, Keyboard, Pressable, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Modal, Keyboard, Pressable, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { X, Trash2 } from "lucide-react-native";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
 import type { Category } from "@/hooks/useCategories";
+import { sanitizeRichHtml } from "@/lib/richText";
 
 interface EditMemoModalProps {
     visible: boolean;
@@ -45,7 +46,7 @@ export function EditMemoModal({
         const trimmedContent = content.replace(/<[^>]*>/g, '').trim();
         if (trimmedContent && selectedCategory) {
             onEdit(memoId, {
-                content: content,
+                content: sanitizeRichHtml(content),
                 category: selectedCategory.label,
                 category_color: selectedCategory.color,
             });
@@ -69,7 +70,11 @@ export function EditMemoModal({
             onRequestClose={onClose}
         >
             <GestureHandlerRootView style={styles.overlay}>
-                <View style={styles.modal}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.keyboardAvoidingView}
+                >
+                    <View style={styles.modal}>
                     <View style={styles.header}>
                         <Text style={styles.title}>메모 수정</Text>
                         <TouchableOpacity onPress={onClose}>
@@ -136,6 +141,7 @@ export function EditMemoModal({
                         </Pressable>
                     </View>
                 </View>
+                </KeyboardAvoidingView>
             </GestureHandlerRootView>
         </Modal>
     );
@@ -145,6 +151,9 @@ const styles = StyleSheet.create({
     overlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    },
+    keyboardAvoidingView: {
+        flex: 1,
         justifyContent: 'flex-end',
     },
     modal: {

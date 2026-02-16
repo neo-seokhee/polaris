@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
 import type { Database } from '@/lib/database.types';
 import { DEMO_DDAYS } from '@/data/demoData';
 
@@ -11,6 +12,7 @@ const MAX_DDAYS = 3;
 
 export function useDDays() {
     const { user, isDemoMode } = useAuth();
+    const { track } = useAnalytics();
     const [ddays, setDDays] = useState<DDay[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -62,6 +64,7 @@ export function useDDays() {
             setDDays((prev) => [...prev, data].sort((a, b) =>
                 new Date(a.target_date).getTime() - new Date(b.target_date).getTime()
             ));
+            track('dday_created');
         } catch (err) {
             console.error('Error adding dday:', err);
         }
@@ -80,6 +83,7 @@ export function useDDays() {
                 prev.map((d) => (d.id === id ? { ...d, title, target_date: targetDate } : d))
                     .sort((a, b) => new Date(a.target_date).getTime() - new Date(b.target_date).getTime())
             );
+            track('dday_updated');
         } catch (err) {
             console.error('Error updating dday:', err);
         }
@@ -95,6 +99,7 @@ export function useDDays() {
 
             if (error) throw error;
             setDDays((prev) => prev.filter((d) => d.id !== id));
+            track('dday_deleted');
         } catch (err) {
             console.error('Error deleting dday:', err);
         }

@@ -1,0 +1,26 @@
+[    1323ms] [WARNING] "shadow*" style props are deprecated. Use "boxShadow". @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:7236
+[    1404ms] [WARNING] props.pointerEvents is deprecated. Use style.pointerEvents @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:7236
+[    1435ms] [WARNING] [Reanimated] Reading from `value` during component render. Please ensure that you don't access the `value` property nor use `get` method of a shared value while React is rendering a component.
+
+If you don't want to see this message, you can disable the `strict` mode. Refer to:
+https://docs.swmansion.com/react-native-reanimated/docs/debugging/logger-configuration for more details. @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:209447
+[    4424ms] [WARNING] [Reanimated] Reading from `value` during component render. Please ensure that you don't access the `value` property nor use `get` method of a shared value while React is rendering a component.
+
+If you don't want to see this message, you can disable the `strict` mode. Refer to:
+https://docs.swmansion.com/react-native-reanimated/docs/debugging/logger-configuration for more details. @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:209447
+[   14757ms] [WARNING] [Reanimated] Reading from `value` during component render. Please ensure that you don't access the `value` property nor use `get` method of a shared value while React is rendering a component.
+
+If you don't want to see this message, you can disable the `strict` mode. Refer to:
+https://docs.swmansion.com/react-native-reanimated/docs/debugging/logger-configuration for more details. @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:209447
+[   28122ms] [WARNING] [Reanimated] Reading from `value` during component render. Please ensure that you don't access the `value` property nor use `get` method of a shared value while React is rendering a component.
+
+If you don't want to see this message, you can disable the `strict` mode. Refer to:
+https://docs.swmansion.com/react-native-reanimated/docs/debugging/logger-configuration for more details. @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:209447
+[   34056ms] [WARNING] [Reanimated] Reading from `value` during component render. Please ensure that you don't access the `value` property nor use `get` method of a shared value while React is rendering a component.
+
+If you don't want to see this message, you can disable the `strict` mode. Refer to:
+https://docs.swmansion.com/react-native-reanimated/docs/debugging/logger-configuration for more details. @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:209447
+[   38823ms] [WARNING] [Reanimated] Reading from `value` during component render. Please ensure that you don't access the `value` property nor use `get` method of a shared value while React is rendering a component.
+
+If you don't want to see this message, you can disable the `strict` mode. Refer to:
+https://docs.swmansion.com/react-native-reanimated/docs/debugging/logger-configuration for more details. @ http://localhost:8081/node_modules/expo-router/entry.bundle?platform=web&dev=true&hot=false&lazy=true&transform.routerRoot=src%2Fapp:209447

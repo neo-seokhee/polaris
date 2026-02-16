@@ -13,6 +13,7 @@ import { DemoBanner } from "@/components/DemoBanner";
 import { useGoogleCalendar, UnifiedEvent } from "@/hooks/useGoogleCalendar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemoNudge } from "@/contexts/DemoNudgeContext";
+import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { DEMO_SCHEDULES } from "@/data/demoData";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
 
@@ -30,7 +31,9 @@ function formatEventTime(startTime: Date, endTime: Date): string {
 }
 
 export default function ScheduleScreen() {
-    const { isDemoMode, exitDemoMode } = useAuth();
+    useScreenTracking('screen_schedule');
+
+    const { isDemoMode } = useAuth();
     const { checkDemoAndNudge } = useDemoNudge();
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -172,8 +175,7 @@ export default function ScheduleScreen() {
                         <Pressable
                             style={styles.demoNudgeBanner}
                             onPress={() => {
-                                exitDemoMode();
-                                router.push('/(auth)/signup');
+                                router.push('/(tabs)/profile');
                             }}
                         >
                             <Sparkles size={14} color={Colors.accent} />
@@ -266,7 +268,7 @@ export default function ScheduleScreen() {
                         setShowAddEventModal(true);
                     }}
                 >
-                    <Plus size={24} color={Colors.textOnDark} />
+                    <Plus size={24} color={Colors.textOnDark} strokeWidth={2.5} />
                 </TouchableOpacity>
             )}
         </SafeAreaView>
@@ -375,10 +377,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.accent,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)',
         elevation: 8,
     },
 });

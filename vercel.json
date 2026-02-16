@@ -2,7 +2,22 @@
     "buildCommand": "npx expo export -p web",
     "outputDirectory": "dist",
     "framework": null,
+    "headers": [
+        {
+            "source": "/.well-known/apple-app-site-association",
+            "headers": [
+                {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                }
+            ]
+        }
+    ],
     "rewrites": [
+        {
+            "source": "/.well-known/:path*",
+            "destination": "/.well-known/:path*"
+        },
         {
             "source": "/(.*)",
             "destination": "/index.html"

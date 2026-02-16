@@ -20,11 +20,23 @@ export interface KakaoUser {
     id: number;
     kakao_account?: {
         email?: string;
+        phone_number?: string;
         profile?: {
             nickname?: string;
             profile_image_url?: string;
         };
     };
+}
+
+/**
+ * 카카오 전화번호 포맷을 한국 국내 형식으로 변환
+ * 예: "+82 10-1234-5678" → "010-1234-5678"
+ */
+export function formatKakaoPhoneNumber(kakaoPhone?: string): string | undefined {
+    if (!kakaoPhone) return undefined;
+    // "+82 10-1234-5678" → "010-1234-5678"
+    const cleaned = kakaoPhone.replace(/^\+82\s?/, '0').trim();
+    return cleaned || undefined;
 }
 
 export function isKakaoConfigured(): boolean {
@@ -51,7 +63,7 @@ export function getKakaoAuthRequestConfig() {
     return {
         clientId: KAKAO_CLIENT_ID,
         redirectUri,
-        scopes: ['profile_nickname', 'account_email'],
+        scopes: ['profile_nickname', 'account_email', 'phone_number'],
     };
 }
 

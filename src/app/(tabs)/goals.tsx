@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { View, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Text } from "react-native";
+import { useState, useCallback } from "react";
+import { View, StyleSheet, Pressable, ActivityIndicator, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Plus, Target, ClipboardCheck } from "lucide-react-native";
 import { GoalHeader } from "@/components/GoalHeader";
@@ -9,12 +9,16 @@ import { AddGoalModal } from "@/components/AddGoalModal";
 import { GoalDetailModal } from "@/components/GoalDetailModal";
 import { MonthlyEvaluationModal } from "@/components/MonthlyEvaluationModal";
 import { DemoBanner } from "@/components/DemoBanner";
+import { DraggableList } from "@/components/DraggableList";
 import { useGoals, Goal } from "@/hooks/useGoals";
 import { useYearGoalText } from "@/hooks/useYearGoalText";
 import { useDemoNudge } from "@/contexts/DemoNudgeContext";
+import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
 
-export default function GoalsScreen() {
+export function GoalsScreen() {
+    useScreenTracking('screen_goals');
+
     const {
         goals,
         isLoading,
@@ -24,6 +28,7 @@ export default function GoalsScreen() {
         addGoal,
         updateGoal,
         deleteGoal,
+        reorderGoals,
     } = useGoals();
 
     const {
@@ -44,51 +49,71 @@ export default function GoalsScreen() {
         setShowDetailModal(true);
     };
 
+    const handleReorder = useCallback((fromIndex: number, toIndex: number) => {
+        reorderGoals(fromIndex, toIndex);
+    }, [reorderGoals]);
+
+    const renderGoalItem = useCallback((goal: Goal, index: number, isDragging: boolean) => (
+        <View style={styles.goalItemWrapper}>
+            <GoalCard
+                title={goal.title}
+                description={goal.description}
+                type={goal.type}
+                monthlyStatus={goal.monthlyStatus}
+                percentage={goal.percentage}
+                targetValue={goal.targetValue}
+                targetUnit={goal.targetUnit}
+                monthlyProgress={goal.monthlyProgress}
+                onPress={() => handleGoalPress(goal)}
+                isDragging={isDragging}
+            />
+        </View>
+    ), []);
+
+    const keyExtractor = useCallback((goal: Goal) => goal.id, []);
+
+    const ListHeader = (
+        <View style={styles.listHeader}>
+            <GoalHeader
+                year={selectedYear}
+                onYearChange={setSelectedYear}
+            />
+            <YearGoalCard
+                year={selectedYear}
+                content={yearGoalContent}
+                isLoading={isYearGoalLoading}
+                onSave={saveYearGoalText}
+            />
+        </View>
+    );
+
+    const ListEmpty = (
+        <View style={styles.emptyContainer}>
+            <Target size={48} color={Colors.textMuted} />
+            <Text style={styles.emptyText}>{selectedYear}년 목표가 없습니다</Text>
+            <Text style={styles.emptySubText}>목표를 추가하여 시작하세요</Text>
+        </View>
+    );
+
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <DemoBanner />
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-                <GoalHeader
-                    year={selectedYear}
-                    onYearChange={setSelectedYear}
+            {isLoading ? (
+                <View style={[styles.scrollView, styles.loadingContainer]}>
+                    {ListHeader}
+                    <ActivityIndicator size="large" color={Colors.accent} />
+                </View>
+            ) : (
+                <DraggableList
+                    data={goals}
+                    renderItem={renderGoalItem}
+                    keyExtractor={keyExtractor}
+                    onReorder={handleReorder}
+                    ListHeaderComponent={ListHeader}
+                    ListEmptyComponent={ListEmpty}
+                    contentContainerStyle={styles.content}
                 />
-
-                <YearGoalCard
-                    year={selectedYear}
-                    content={yearGoalContent}
-                    isLoading={isYearGoalLoading}
-                    onSave={saveYearGoalText}
-                />
-
-                {isLoading ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color={Colors.accent} />
-                    </View>
-                ) : goals.length === 0 ? (
-                    <View style={styles.emptyContainer}>
-                        <Target size={48} color={Colors.textMuted} />
-                        <Text style={styles.emptyText}>{selectedYear}년 목표가 없습니다</Text>
-                        <Text style={styles.emptySubText}>목표를 추가하여 시작하세요</Text>
-                    </View>
-                ) : (
-                    <View style={styles.goalsList}>
-                        {goals.map((goal) => (
-                            <GoalCard
-                                key={goal.id}
-                                title={goal.title}
-                                description={goal.description}
-                                type={goal.type}
-                                monthlyStatus={goal.monthlyStatus}
-                                percentage={goal.percentage}
-                                targetValue={goal.targetValue}
-                                targetUnit={goal.targetUnit}
-                                monthlyProgress={goal.monthlyProgress}
-                                onPress={() => handleGoalPress(goal)}
-                            />
-                        ))}
-                    </View>
-                )}
-            </ScrollView>
+            )}
 
             <AddGoalModal
                 visible={showAddModal}
@@ -119,15 +144,15 @@ export default function GoalsScreen() {
             {/* FAB 버튼들 */}
             <View style={styles.fabContainer}>
                 {/* 월간 평가 버튼 */}
-                <TouchableOpacity
+                <Pressable
                     style={styles.fabSecondary}
                     onPress={() => setShowEvaluationModal(true)}
                 >
                     <ClipboardCheck size={22} color={Colors.textOnDark} />
-                </TouchableOpacity>
+                </Pressable>
 
                 {/* 목표 추가 버튼 */}
-                <TouchableOpacity
+                <Pressable
                     style={styles.fab}
                     onPress={() => {
                         if (isDemoMode) {
@@ -137,12 +162,14 @@ export default function GoalsScreen() {
                         setShowAddModal(true);
                     }}
                 >
-                    <Plus size={24} color={Colors.textOnDark} />
-                </TouchableOpacity>
+                    <Plus size={24} color={Colors.textOnDark} strokeWidth={2.5} />
+                </Pressable>
             </View>
         </SafeAreaView>
     );
 }
+
+export default GoalsScreen;
 
 const styles = StyleSheet.create({
     container: {
@@ -155,7 +182,15 @@ const styles = StyleSheet.create({
         paddingTop: Spacing['3xl'],
     },
     content: {
+        paddingHorizontal: Spacing['3xl'],
+        paddingTop: Spacing['3xl'],
         paddingBottom: 150, // FAB 버튼 2개 높이 + 여유 공간
+    },
+    listHeader: {
+        marginBottom: Spacing['2xl'],
+    },
+    goalItemWrapper: {
+        marginBottom: Spacing.md,
     },
     goalsList: {
         gap: Spacing.md,
@@ -191,12 +226,9 @@ const styles = StyleSheet.create({
         height: 56,
         borderRadius: 28,
         backgroundColor: Colors.textSecondary,
-        alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        alignItems: 'center',
+        boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)',
         elevation: 8,
     },
     fab: {
@@ -204,12 +236,9 @@ const styles = StyleSheet.create({
         height: 56,
         borderRadius: 28,
         backgroundColor: Colors.accent,
-        alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        alignItems: 'center',
+        boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)',
         elevation: 8,
     },
 });

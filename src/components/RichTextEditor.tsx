@@ -11,7 +11,17 @@ interface RichTextEditorProps {
     autoFocus?: boolean;
 }
 
-// 웹용 에디터 컴포넌트
+const sanitizeRichHtml = (html: string): string => {
+    if (!html) return "";
+    return html
+        .replace(/\sstyle="[^"]*"/gi, "")
+        .replace(/\sclass="[^"]*"/gi, "")
+        .replace(/\sid="[^"]*"/gi, "")
+        .replace(/<span[^>]*>/gi, "")
+        .replace(/<\/span>/gi, "");
+};
+
+// 웹용 에디터 컴포넌트 (Tiptap)
 function WebRichTextEditor({
     value,
     onChange,
@@ -19,165 +29,127 @@ function WebRichTextEditor({
     minHeight = 120,
     autoFocus = false,
 }: RichTextEditorProps) {
-    const containerRef = useRef<View>(null);
-    const editorRef = useRef<HTMLDivElement | null>(null);
-    const lastValueRef = useRef(value);
-    const hasUserInputRef = useRef(false);
-    const [isReady, setIsReady] = useState(false);
+    const tiptapReact = require("@tiptap/react");
+    const StarterKit = require("@tiptap/starter-kit").default;
+    const UnderlineExt = require("@tiptap/extension-underline").default;
+    const LinkExt = require("@tiptap/extension-link").default;
+    const PlaceholderExt = require("@tiptap/extension-placeholder").default;
+    const EditorContent = tiptapReact.EditorContent as any;
+    const useEditor = tiptapReact.useEditor as any;
 
     useEffect(() => {
-        // 플레이스홀더 스타일 추가
-        const styleId = 'rich-editor-placeholder-style';
+        const styleId = "tiptap-web-editor-style";
         if (!document.getElementById(styleId)) {
-            const style = document.createElement('style');
+            const style = document.createElement("style");
             style.id = styleId;
             style.textContent = `
-                .rich-editor-placeholder:empty:before {
-                    content: attr(data-placeholder);
-                    color: #6B6B70;
-                    pointer-events: none;
+                .tiptap-root {
+                    display: flex;
+                    flex-direction: column;
+                    background: ${Colors.bgTertiary};
                 }
-                .rich-editor-content {
-                    outline: none;
-                    min-height: ${minHeight - 44}px;
+                .tiptap-content {
+                    min-height: ${Math.max(minHeight - 44, 60)}px;
                     padding: 12px;
-                    color: #FFFFFF;
+                    color: ${Colors.textPrimary};
                     font-size: 12px;
                     line-height: 1.8;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background-color: #1A1A1D;
+                    outline: none;
+                    white-space: pre-wrap;
+                    word-break: break-word;
                 }
-                .rich-editor-content * {
-                    color: #FFFFFF;
+                .tiptap-content * {
+                    color: ${Colors.textPrimary};
                     font-size: 12px;
+                }
+                .tiptap-content p { margin: 0 0 6px 0; }
+                .tiptap-content ul,
+                .tiptap-content ol { margin: 0 0 6px 0; padding-left: 20px; }
+                .tiptap-content a { color: ${Colors.accent}; text-decoration: underline; }
+                .tiptap-content .is-editor-empty:first-child::before {
+                    content: attr(data-placeholder);
+                    color: ${Colors.textMuted};
+                    float: left;
+                    height: 0;
+                    pointer-events: none;
                 }
             `;
             document.head.appendChild(style);
         }
+    }, [minHeight]);
 
-        // DOM이 준비된 후 에디터 생성
-        const timer = setTimeout(() => {
-            const container = containerRef.current as unknown as HTMLDivElement;
-            if (container && !editorRef.current) {
-                const editor = document.createElement('div');
-                editor.className = 'rich-editor-placeholder rich-editor-content';
-                editor.setAttribute('contenteditable', 'true');
-                editor.innerHTML = value || '';
+    const editor = useEditor({
+        extensions: [
+            StarterKit,
+            UnderlineExt,
+            LinkExt.configure({
+                openOnClick: false,
+                autolink: true,
+            }),
+            PlaceholderExt.configure({
+                placeholder,
+                emptyEditorClass: "is-editor-empty",
+            }),
+        ],
+        content: sanitizeRichHtml(value || ""),
+        autofocus: autoFocus,
+        editorProps: {
+            attributes: {
+                class: "tiptap-content",
+                spellcheck: "true",
+            },
+            transformPastedHTML: (html: string) => sanitizeRichHtml(html),
+        },
+        onUpdate: ({ editor: nextEditor }: any) => {
+            onChange(sanitizeRichHtml(nextEditor.getHTML()));
+        },
+    });
 
-                // 입력 이벤트 - 디바운스 처리
-                let inputTimeout: NodeJS.Timeout | null = null;
-
-                editor.addEventListener('input', () => {
-                    hasUserInputRef.current = true;
-
-                    // 디바운스: 입력이 멈춘 후 100ms 후에 onChange 호출
-                    if (inputTimeout) {
-                        clearTimeout(inputTimeout);
-                    }
-                    inputTimeout = setTimeout(() => {
-                        const currentValue = editor.innerHTML;
-                        lastValueRef.current = currentValue;
-                        onChange(currentValue);
-                    }, 100);
-                });
-
-                if (!value || value.replace(/<[^>]*>/g, '').trim() === '') {
-                    editor.setAttribute('data-placeholder', placeholder);
-                }
-
-                editor.addEventListener('focus', () => {
-                    editor.removeAttribute('data-placeholder');
-                });
-
-                editor.addEventListener('blur', () => {
-                    // blur 시 즉시 최종 값 동기화
-                    if (inputTimeout) {
-                        clearTimeout(inputTimeout);
-                    }
-                    const currentValue = editor.innerHTML;
-                    lastValueRef.current = currentValue;
-                    onChange(currentValue);
-
-                    const text = editor.innerText.trim();
-                    if (!text) {
-                        editor.setAttribute('data-placeholder', placeholder);
-                    }
-
-                    // blur 후 외부 값 동기화 허용
-                    setTimeout(() => {
-                        hasUserInputRef.current = false;
-                    }, 200);
-                });
-
-                container.appendChild(editor);
-                editorRef.current = editor;
-                setIsReady(true);
-
-                if (autoFocus) {
-                    setTimeout(() => editor.focus(), 100);
-                }
-            }
-        }, 0);
-
-        return () => clearTimeout(timer);
-    }, []);
-
-    // value가 외부에서 변경된 경우 (사용자 입력 중이 아닐 때만, 값이 초기화되는 경우만)
     useEffect(() => {
-        if (editorRef.current && isReady) {
-            // 사용자가 입력 중이면 외부 값 무시
-            if (hasUserInputRef.current) {
-                return;
-            }
-            // 값이 완전히 비워지거나(리셋), 완전히 다른 값으로 변경된 경우만 동기화
-            const isReset = !value || value === '';
-            const isCompletelyDifferent = lastValueRef.current !== value &&
-                value.replace(/<[^>]*>/g, '').trim() !== editorRef.current.innerText.trim();
-
-            if (isReset || isCompletelyDifferent) {
-                editorRef.current.innerHTML = value || '';
-                lastValueRef.current = value;
-            }
+        if (!editor) return;
+        const current = sanitizeRichHtml(editor.getHTML());
+        const next = sanitizeRichHtml(value || "");
+        if (current !== next) {
+            editor.commands.setContent(next || "", false, { preserveWhitespace: "full" });
         }
-    }, [value, isReady]);
+    }, [editor, value]);
 
-    const execCommand = (command: string, value?: string) => {
-        if (editorRef.current) {
-            editorRef.current.focus();
-            document.execCommand(command, false, value);
-            onChange(editorRef.current.innerHTML);
-        }
-    };
+    if (!editor) {
+        return (
+            <View style={[styles.container, { minHeight }]}>
+                <View style={styles.loadingContainer} />
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { minHeight }]}>
             <View style={styles.toolbar}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarContent}>
-                    <TouchableOpacity style={styles.toolbarButton} onPress={() => execCommand('bold')}>
+                    <TouchableOpacity style={styles.toolbarButton} onPress={() => editor.chain().focus().toggleBold().run()}>
                         <Bold size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolbarButton} onPress={() => execCommand('italic')}>
+                    <TouchableOpacity style={styles.toolbarButton} onPress={() => editor.chain().focus().toggleItalic().run()}>
                         <Italic size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolbarButton} onPress={() => execCommand('underline')}>
+                    <TouchableOpacity style={styles.toolbarButton} onPress={() => editor.chain().focus().toggleUnderline().run()}>
                         <Underline size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolbarButton} onPress={() => execCommand('strikeThrough')}>
+                    <TouchableOpacity style={styles.toolbarButton} onPress={() => editor.chain().focus().toggleStrike().run()}>
                         <Strikethrough size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
                     <View style={styles.toolbarDivider} />
-                    <TouchableOpacity style={styles.toolbarButton} onPress={() => execCommand('insertUnorderedList')}>
+                    <TouchableOpacity style={styles.toolbarButton} onPress={() => editor.chain().focus().toggleBulletList().run()}>
                         <List size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolbarButton} onPress={() => execCommand('insertOrderedList')}>
+                    <TouchableOpacity style={styles.toolbarButton} onPress={() => editor.chain().focus().toggleOrderedList().run()}>
                         <ListOrdered size={18} color={Colors.textSecondary} />
                     </TouchableOpacity>
                 </ScrollView>
             </View>
-            <View
-                ref={containerRef}
-                style={[styles.editorContainer, { minHeight: minHeight - 44 }]}
-            />
+            <View style={[styles.editorContainer, { minHeight: minHeight - 44 }]}>
+                <EditorContent editor={editor} className="tiptap-root" />
+            </View>
         </View>
     );
 }
@@ -193,7 +165,7 @@ function MobileRichTextEditor({
     const [RichEditor, setRichEditor] = useState<any>(null);
     const [actions, setActions] = useState<any>(null);
     const richText = useRef<any>(null);
-    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         import('react-native-pell-rich-editor').then((module) => {

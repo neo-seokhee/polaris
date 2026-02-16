@@ -4,26 +4,24 @@ import { MemoCard } from "./MemoCard";
 
 const memos = [
   {
-    id: 1,
+    id: "1",
     category: "아이디어",
     categoryColor: "#FFD700",
     content:
       "프로젝트 아이디어: 사용자 경험을 개선할 수 있는 새로운 인터페이스 디자인. 특히 모바일 환경에서의 터치 인터랙션과...",
     time: "오늘 오전 10:23",
     isStarred: true,
-    isExpanded: false,
   },
   {
-    id: 2,
+    id: "2",
     category: "회의",
     categoryColor: "#3B82F6",
     content: "회의 내용 정리: 다음 주 목표 설정 및 역할 분담 완료",
     time: "어제",
     isStarred: false,
-    isExpanded: false,
   },
   {
-    id: 3,
+    id: "3",
     category: "독서",
     categoryColor: "#22C55E",
     content: `독서 노트: 좋은 습관을 만드는 작은 변화의 힘
@@ -36,18 +34,29 @@ const memos = [
 - 작은 성공을 축하하며 동기부여 유지하기`,
     time: "1주일 전",
     isStarred: true,
-    isExpanded: true,
-    isSelected: true,
   },
 ];
 
 export function MemoScreen() {
+  const handlePress = (id: string, content: string, category: string, categoryColor: string) => {
+    console.log('Memo pressed:', id);
+  };
+
+  const handleToggleStar = (id: string, isStarred: boolean) => {
+    console.log('Toggle star:', id, isStarred);
+  };
+
   return (
     <ScrollView className="flex-1 px-5 pt-5">
       <MemoHeader />
       <View className="flex flex-1 flex-col gap-3 pt-3">
         {memos.map((memo) => (
-          <MemoCard key={memo.id} {...memo} />
+          <MemoCard
+            key={memo.id}
+            {...memo}
+            onPress={handlePress}
+            onToggleStar={handleToggleStar}
+          />
         ))}
       </View>
     </ScrollView>

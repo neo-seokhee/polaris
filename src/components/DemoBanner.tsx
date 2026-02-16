@@ -6,13 +6,12 @@ import { Colors, Spacing, FontSizes, BorderRadius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function DemoBanner() {
-    const { isDemoMode, exitDemoMode } = useAuth();
+    const { isDemoMode } = useAuth();
 
     if (!isDemoMode) return null;
 
     const handlePress = () => {
-        exitDemoMode();
-        router.push('/(auth)/signup');
+        router.push('/(tabs)/profile');
     };
 
     return (

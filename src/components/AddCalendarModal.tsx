@@ -33,7 +33,8 @@ export function AddCalendarModal({ visible, onClose, onAdd }: AddCalendarModalPr
 
     useEffect(() => {
         if (visible) {
-            setTimeout(() => nameInputRef.current?.focus(), 100);
+            const timer = setTimeout(() => nameInputRef.current?.focus(), 100);
+            return () => clearTimeout(timer);
         }
     }, [visible]);
 
@@ -51,13 +52,17 @@ export function AddCalendarModal({ visible, onClose, onAdd }: AddCalendarModalPr
         }
 
         setIsSubmitting(true);
-        const result = await onAdd(name.trim(), url.trim(), color);
-        setIsSubmitting(false);
-
-        if (result.error) {
-            Alert.alert('오류', result.error);
-        } else {
-            handleClose();
+        try {
+            const result = await onAdd(name.trim(), url.trim(), color);
+            if (result.error) {
+                Alert.alert('오류', result.error);
+            } else {
+                handleClose();
+            }
+        } catch (error) {
+            Alert.alert('오류', '캘린더 추가 중 문제가 발생했습니다.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
+import { notifySlack } from '@/lib/slackNotify';
 import type { Database } from '@/lib/database.types';
 import { DEMO_MEMOS } from '@/data/demoData';
 
@@ -9,6 +11,7 @@ type MemoInsert = Database['public']['Tables']['memos']['Insert'];
 
 export function useMemos() {
     const { user, isDemoMode } = useAuth();
+    const { track } = useAnalytics();
     const [memos, setMemos] = useState<Memo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -62,6 +65,8 @@ export function useMemos() {
             if (error) throw error;
 
             setMemos((prev) => [data, ...prev]);
+            track('memo_created', { category });
+            notifySlack('memo_created', { userId: user.id }, `[${category}] ${content.substring(0, 50)}`);
             return { data, error: null };
         } catch (err: any) {
             setError(err.message);
@@ -85,6 +90,10 @@ export function useMemos() {
                     memo.id === id ? { ...memo, ...updates } : memo
                 )
             );
+            track('memo_updated', {
+                has_content: Object.prototype.hasOwnProperty.call(updates, 'content'),
+                has_category: Object.prototype.hasOwnProperty.call(updates, 'category'),
+            });
         } catch (err: any) {
             setError(err.message);
         }
@@ -106,6 +115,7 @@ export function useMemos() {
                     memo.id === id ? { ...memo, is_starred: !isStarred } : memo
                 )
             );
+            track('memo_starred', { is_starred: !isStarred });
         } catch (err: any) {
             setError(err.message);
         }
@@ -123,6 +133,7 @@ export function useMemos() {
             if (error) throw error;
 
             setMemos((prev) => prev.filter((memo) => memo.id !== id));
+            track('memo_deleted');
         } catch (err: any) {
             setError(err.message);
         }
@@ -131,6 +142,7 @@ export function useMemos() {
     // Reorder memos (local only)
     const reorderMemos = (reorderedMemos: Memo[]) => {
         setMemos(reorderedMemos);
+        track('memos_reordered', { count: reorderedMemos.length });
     };
 
     // Subscribe to realtime changes

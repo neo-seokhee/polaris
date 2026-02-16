@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
 
 const CATEGORIES_KEY = 'memo_categories';
 
@@ -18,6 +19,7 @@ const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 export function useCategories() {
+    const { track } = useAnalytics();
     const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
     const [loading, setLoading] = useState(true);
 
@@ -56,6 +58,7 @@ export function useCategories() {
         };
         const newCategories = [...categories, newCategory];
         await saveCategories(newCategories);
+        track('memo_category_created');
         return newCategory;
     };
 
@@ -64,15 +67,18 @@ export function useCategories() {
             cat.id === id ? { ...cat, label, color } : cat
         );
         await saveCategories(newCategories);
+        track('memo_category_updated');
     };
 
     const deleteCategory = async (id: string) => {
         const newCategories = categories.filter(cat => cat.id !== id);
         await saveCategories(newCategories);
+        track('memo_category_deleted');
     };
 
     const reorderCategories = async (newCategories: Category[]) => {
         await saveCategories(newCategories);
+        track('memo_categories_reordered', { count: newCategories.length });
     };
 
     return {

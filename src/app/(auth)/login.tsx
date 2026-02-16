@@ -1,17 +1,19 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { getKakaoAuthRequestConfig } from "@/lib/kakaoOAuth";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
+import { KakaoIcon, AppleIcon } from "@/components/SocialIcons";
 
 export default function LoginScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [kakaoLoading, setKakaoLoading] = useState(false);
-    const { signIn, signInWithKakao, isKakaoAvailable, enterDemoMode } = useAuth();
+    const [appleLoading, setAppleLoading] = useState(false);
+    const { signIn, signInWithKakao, signInWithApple, isKakaoAvailable, isAppleAvailable, enterDemoMode } = useAuth();
 
     // Redirect URI 미리 계산
     const kakaoRedirectUri = getKakaoAuthRequestConfig().redirectUri;
@@ -29,6 +31,20 @@ export default function LoginScreen() {
         if (error) {
             if (error.message !== '로그인이 취소되었습니다.') {
                 Alert.alert("카카오 로그인 실패", error.message);
+            }
+        } else {
+            router.replace("/(tabs)");
+        }
+    };
+
+    const handleAppleLogin = async () => {
+        setAppleLoading(true);
+        const { error } = await signInWithApple();
+        setAppleLoading(false);
+
+        if (error) {
+            if (error.message !== '로그인이 취소되었습니다.') {
+                Alert.alert("Apple 로그인 실패", error.message);
             }
         } else {
             router.replace("/(tabs)");
@@ -57,7 +73,7 @@ export default function LoginScreen() {
             <View style={styles.content}>
                 <View style={styles.header}>
                     <Text style={styles.title}>Polaris</Text>
-                    <Text style={styles.subtitle}>나아감으로써 힘을 얻는다</Text>
+                    <Text style={styles.subtitle}>당신의 목표를 향한 나침판</Text>
                 </View>
 
                 <View style={styles.form}>
@@ -106,15 +122,31 @@ export default function LoginScreen() {
                         onPress={handleKakaoLogin}
                         disabled={!isKakaoAvailable || kakaoLoading}
                     >
-                        <Text style={styles.kakaoButtonText}>
-                            {kakaoLoading ? "로그인 중..." : isKakaoAvailable ? "카카오로 로그인" : "카카오 로그인 (준비중)"}
-                        </Text>
+                        <View style={styles.socialButtonContent}>
+                            <KakaoIcon size={18} color="#191919" />
+                            <Text style={styles.kakaoButtonText}>
+                                {kakaoLoading ? "로그인 중..." : isKakaoAvailable ? "카카오로 로그인" : "카카오 로그인 (준비중)"}
+                            </Text>
+                        </View>
                     </Pressable>
 
-                    {/* Debug: Redirect URI 직접 표시 */}
-                    <Text style={styles.debugText} selectable>
-                        URI: {kakaoRedirectUri || '(없음)'}
-                    </Text>
+                    {Platform.OS === 'ios' && isAppleAvailable && (
+                        <Pressable
+                            style={[
+                                styles.appleButton,
+                                appleLoading && styles.buttonDisabled,
+                            ]}
+                            onPress={handleAppleLogin}
+                            disabled={appleLoading}
+                        >
+                            <View style={styles.socialButtonContent}>
+                                <AppleIcon size={18} color="#FFFFFF" />
+                                <Text style={styles.appleButtonText}>
+                                    {appleLoading ? "로그인 중..." : "Apple로 로그인"}
+                                </Text>
+                            </View>
+                        </Pressable>
+                    )}
 
                     <View style={styles.footer}>
                         <Text style={styles.footerText}>계정이 없으신가요? </Text>
@@ -199,6 +231,11 @@ const styles = StyleSheet.create({
         padding: Spacing['2xl'],
         alignItems: 'center',
     },
+    socialButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
     kakaoButtonDisabled: {
         backgroundColor: Colors.bgTertiary,
         opacity: 0.5,
@@ -207,6 +244,17 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.base,
         fontWeight: '600',
         color: '#191919',
+    },
+    appleButton: {
+        backgroundColor: '#000000',
+        borderRadius: BorderRadius.lg,
+        padding: Spacing['2xl'],
+        alignItems: 'center',
+    },
+    appleButtonText: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: '#FFFFFF',
     },
     footer: {
         flexDirection: 'row',

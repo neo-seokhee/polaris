@@ -18,9 +18,15 @@ export function DemoNudgeProvider({ children }: { children: React.ReactNode }) {
     const [actionName, setActionName] = useState<string>('이 기능을 사용');
 
     useEffect(() => {
+        // 로딩 완료 후, 로그인 안 된 상태에서 데모 모드일 때만 웰컴 모달 표시
         if (!loading && isDemoMode && !hasShownWelcome) {
-            setWelcomeVisible(true);
-            setHasShownWelcome(true);
+            // 3초 후에 모달 표시
+            const timer = setTimeout(() => {
+                setWelcomeVisible(true);
+                setHasShownWelcome(true);
+            }, 3000);
+
+            return () => clearTimeout(timer);
         }
     }, [loading, isDemoMode, hasShownWelcome]);
 

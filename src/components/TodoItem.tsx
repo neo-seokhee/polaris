@@ -13,6 +13,7 @@ interface TodoItemProps {
   onPress: (id: string, title: string) => void;
   drag?: () => void;
   showDragHandle?: boolean;
+  enableDrag?: boolean;
 }
 
 export function TodoItem({
@@ -26,6 +27,7 @@ export function TodoItem({
   onPress,
   drag,
   showDragHandle = false,
+  enableDrag = false,
 }: TodoItemProps) {
   const handleToggleActive = () => {
     onToggleActive(id, isActive);
@@ -37,7 +39,7 @@ export function TodoItem({
 
   return (
     <View style={styles.container}>
-      {(drag || showDragHandle) && !isCompleted && (
+      {(drag || showDragHandle || enableDrag) && !isCompleted && (
         <Pressable
           onLongPress={drag}
           delayLongPress={100}

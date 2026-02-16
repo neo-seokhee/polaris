@@ -3,8 +3,6 @@ import { View, Text, Modal, Pressable, StyleSheet } from 'react-native';
 import { Lock, Check, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { Colors, Spacing, FontSizes, BorderRadius } from '@/constants/theme';
-import { useAuth } from '@/contexts/AuthContext';
-
 interface SignupNudgeModalProps {
     visible: boolean;
     onClose: () => void;
@@ -12,12 +10,9 @@ interface SignupNudgeModalProps {
 }
 
 export function SignupNudgeModal({ visible, onClose, actionName = '이 기능을 사용' }: SignupNudgeModalProps) {
-    const { exitDemoMode } = useAuth();
-
     const handleSignup = () => {
         onClose();
-        exitDemoMode();
-        router.push('/(auth)/signup');
+        router.push('/(tabs)/profile');
     };
 
     return (

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
+import { notifySlack } from '@/lib/slackNotify';
 import type { Database } from '@/lib/database.types';
 import { DEMO_SCHEDULES } from '@/data/demoData';
 
@@ -23,6 +25,7 @@ export interface UnifiedEvent {
 
 export function useSchedules() {
     const { user, isDemoMode } = useAuth();
+    const { track } = useAnalytics();
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [syncedEvents, setSyncedEvents] = useState<SyncedEvent[]>([]);
     const [subscriptions, setSubscriptions] = useState<CalendarSubscription[]>([]);
@@ -202,6 +205,8 @@ export function useSchedules() {
                 (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
             ));
 
+            track('schedule_created');
+            notifySlack('schedule_created', { userId: user.id }, title);
             return { data, error: null };
         } catch (err: any) {
             setError(err.message);
@@ -226,6 +231,11 @@ export function useSchedules() {
                     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
             );
 
+            track('schedule_updated', {
+                has_title: Object.prototype.hasOwnProperty.call(updates, 'title'),
+                has_time: Object.prototype.hasOwnProperty.call(updates, 'start_time') || Object.prototype.hasOwnProperty.call(updates, 'end_time'),
+                has_location: Object.prototype.hasOwnProperty.call(updates, 'location'),
+            });
             return { data, error: null };
         } catch (err: any) {
             setError(err.message);
@@ -244,6 +254,7 @@ export function useSchedules() {
             if (error) throw error;
 
             setSchedules((prev) => prev.filter((schedule) => schedule.id !== id));
+            track('schedule_deleted');
             return { error: null };
         } catch (err: any) {
             setError(err.message);

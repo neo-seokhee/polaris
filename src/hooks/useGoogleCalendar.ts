@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+import * as ExpoLinking from 'expo-linking';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -446,15 +449,136 @@ export function useGoogleCalendar() {
 
         try {
             setError(null);
-            const result = await promptAsync();
-            if (result.type === 'cancel' || result.type === 'dismiss') {
-                return { error: '사용자가 인증을 취소했습니다.' };
+
+            if (Platform.OS === 'web') {
+                // 웹: 기존 AuthSession 방식 사용
+                const result = await promptAsync();
+                if (result.type === 'cancel' || result.type === 'dismiss') {
+                    return { error: '사용자가 인증을 취소했습니다.' };
+                }
+                return { error: null };
             }
+
+            // 모바일: WebBrowser.openAuthSessionAsync 사용 (카카오 로그인과 동일한 패턴)
+            const config = getAuthRequestConfig();
+            const appCallbackUrl = ExpoLinking.createURL('google-auth-callback');
+
+            // PKCE code verifier 생성
+            const codeVerifier = await generateCodeVerifier();
+            const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+            // code_verifier를 AsyncStorage에 임시 저장 (콜백에서 사용)
+            await storage.setItem('google_code_verifier', codeVerifier);
+
+            // state 파라미터에 앱 콜백 URL 포함
+            const stateData = JSON.stringify({ mobile: true, callbackUrl: appCallbackUrl });
+
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+                `client_id=${encodeURIComponent(config.clientId)}` +
+                `&redirect_uri=${encodeURIComponent(config.redirectUri)}` +
+                `&response_type=code` +
+                `&scope=${encodeURIComponent(config.scopes.join(' '))}` +
+                `&access_type=offline` +
+                `&prompt=consent` +
+                `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+                `&code_challenge_method=S256` +
+                `&state=${encodeURIComponent(stateData)}`;
+
+            console.log('[Google OAuth] Opening auth URL:', authUrl);
+            console.log('[Google OAuth] App callback URL:', appCallbackUrl);
+
+            const result = await WebBrowser.openAuthSessionAsync(authUrl, appCallbackUrl);
+
+            if (result.type !== 'success' || !result.url) {
+                if (result.type === 'cancel') {
+                    return { error: '사용자가 인증을 취소했습니다.' };
+                }
+                return { error: 'Google 인증에 실패했습니다.' };
+            }
+
+            console.log('[Google OAuth] Got result URL:', result.url);
+            const url = new URL(result.url);
+
+            // 에러 체크
+            const errorParam = url.searchParams.get('error');
+            if (errorParam) {
+                return { error: `Google 인증 오류: ${errorParam}` };
+            }
+
+            // code 추출
+            const code = url.searchParams.get('code');
+            if (!code) {
+                return { error: '인증 코드를 받지 못했습니다.' };
+            }
+
+            // 저장된 code_verifier 가져오기
+            const storedCodeVerifier = await storage.getItem('google_code_verifier');
+            if (!storedCodeVerifier) {
+                return { error: 'Code verifier를 찾을 수 없습니다.' };
+            }
+
+            // 토큰 교환
+            setIsLoading(true);
+            const tokens = await exchangeCodeForTokens(code, storedCodeVerifier);
+            const userEmail = await getUserEmail(tokens.accessToken);
+
+            // DB에 토큰 저장
+            const { data, error: dbError } = await supabase
+                .from('google_tokens')
+                .upsert({
+                    user_id: user!.id,
+                    access_token: tokens.accessToken,
+                    refresh_token: tokens.refreshToken,
+                    expires_at: tokens.expiresAt.toISOString(),
+                    email: userEmail || null,
+                    updated_at: new Date().toISOString(),
+                }, {
+                    onConflict: 'user_id',
+                })
+                .select()
+                .single();
+
+            if (dbError) throw dbError;
+
+            setTokenData(data);
+            setEmail(userEmail);
+            setIsConnected(true);
+            setIsLoading(false);
+
+            // 연결 후 캘린더 목록 및 이벤트 가져오기
+            await fetchCalendarsAndEvents(tokens.accessToken);
+
+            // 임시 저장된 code_verifier 삭제
+            await storage.removeItem('google_code_verifier');
+
             return { error: null };
         } catch (err: any) {
             setError(err.message);
+            setIsLoading(false);
             return { error: err.message };
         }
+    };
+
+    // PKCE code verifier 생성 (43-128자 랜덤 문자열)
+    const generateCodeVerifier = async (): Promise<string> => {
+        const randomBytes = await Crypto.getRandomBytesAsync(32);
+        return btoa(String.fromCharCode(...randomBytes))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
+    };
+
+    // PKCE code challenge 생성 (code_verifier의 SHA256 해시)
+    const generateCodeChallenge = async (codeVerifier: string): Promise<string> => {
+        const digest = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            codeVerifier,
+            { encoding: Crypto.CryptoEncoding.BASE64 }
+        );
+        return digest
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
     };
 
     // Google 계정 연결 해제

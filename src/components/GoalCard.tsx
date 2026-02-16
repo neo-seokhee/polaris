@@ -14,6 +14,7 @@ interface GoalCardProps {
   targetUnit?: string | null;
   monthlyProgress?: number[];
   onPress?: () => void;
+  isDragging?: boolean;
 }
 
 function MonthIcon({ status }: { status: MonthStatus }) {
@@ -29,6 +30,19 @@ function MonthIcon({ status }: { status: MonthStatus }) {
   }
 }
 
+// 숫자에 3자리마다 콤마 추가
+function formatNumber(num: number): string {
+  return num.toLocaleString('ko-KR');
+}
+
+// 퍼센트 포맷 (소숫점 둘째자리까지, 정수면 소숫점 없이)
+function formatPercentage(num: number): string {
+  if (Number.isInteger(num)) {
+    return num.toString();
+  }
+  return num.toFixed(2).replace(/\.?0+$/, '');
+}
+
 function getProgress(
   type: 'monthly' | 'percentage',
   monthlyStatus?: MonthStatus[],
@@ -40,9 +54,11 @@ function getProgress(
   if (type === 'percentage') {
     if (targetValue && targetUnit && monthlyProgress) {
       const current = monthlyProgress.reduce((sum, v) => sum + v, 0);
-      return `${current}/${targetValue}${targetUnit} (${percentage || 0}%)`;
+      // 실제 값에서 퍼센트 계산 (소숫점 정밀도 유지)
+      const calculatedPercentage = (current / targetValue) * 100;
+      return `${formatNumber(current)}/${formatNumber(targetValue)}${targetUnit} (${formatPercentage(calculatedPercentage)}%)`;
     }
-    return `${percentage || 0}%`;
+    return `${formatPercentage(percentage || 0)}%`;
   }
   if (monthlyStatus) {
     const completed = monthlyStatus.filter(s => s === 'complete').length;
@@ -71,6 +87,7 @@ export function GoalCard({
   targetUnit,
   monthlyProgress,
   onPress,
+  isDragging = false,
 }: GoalCardProps) {
   const completed = isCompleted(type, monthlyStatus, percentage);
   const progress = getProgress(type, monthlyStatus, percentage, targetValue, targetUnit, monthlyProgress);
@@ -80,9 +97,11 @@ export function GoalCard({
       style={[
         styles.card,
         completed ? styles.cardCompleted : styles.cardDefault,
+        isDragging && styles.cardDragging,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
+      delayLongPress={200}
     >
       <View style={styles.header}>
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
@@ -111,7 +130,12 @@ export function GoalCard({
       {type === "monthly" && monthlyStatus && (
         <View style={styles.monthIconsContainer}>
           {monthlyStatus.map((status, index) => (
-            <MonthIcon key={index} status={status} />
+            <View key={index} style={styles.monthItem}>
+              <Text style={styles.monthLabel}>
+                {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][index]}
+              </Text>
+              <MonthIcon status={status} />
+            </View>
           ))}
         </View>
       )}
@@ -134,6 +158,10 @@ const styles = StyleSheet.create({
   cardCompleted: {
     borderColor: Colors.success,
     backgroundColor: Colors.bgSecondary,
+  },
+  cardDragging: {
+    borderColor: Colors.accent,
+    opacity: 0.9,
   },
   header: {
     flexDirection: 'row',
@@ -188,6 +216,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    gap: 6,
+    gap: 2,
+  },
+  monthItem: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  monthLabel: {
+    fontSize: 8,
+    fontWeight: '500',
+    color: Colors.textMuted,
+    letterSpacing: -0.3,
   },
 });

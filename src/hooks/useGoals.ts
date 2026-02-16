@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
+import { notifySlack } from '@/lib/slackNotify';
 import type { Database } from '@/lib/database.types';
 import { DEMO_GOALS } from '@/data/demoData';
 
@@ -47,6 +49,7 @@ interface UpdateGoalParams {
 
 export function useGoals() {
     const { user, isDemoMode } = useAuth();
+    const { track } = useAnalytics();
     const [goals, setGoals] = useState<Goal[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -74,7 +77,7 @@ export function useGoals() {
     const fetchGoals = useCallback(async (year: number) => {
         if (isDemoMode) {
             const demoGoalsForYear = DEMO_GOALS.filter(g => g.year === year);
-            setGoals(demoGoalsForYear.map(transformGoal));
+            setGoals((demoGoalsForYear as GoalRow[]).map(transformGoal));
             setIsLoading(false);
             return;
         }
@@ -87,11 +90,20 @@ export function useGoals() {
                 .select('*')
                 .eq('user_id', user.id)
                 .eq('year', year)
+                .order('position', { ascending: true, nullsFirst: false })
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
 
-            setGoals((data || []).map(transformGoal));
+            // position이 null인 항목은 뒤로 정렬
+            const sortedData = (data || []).sort((a, b) => {
+                if (a.position === null && b.position === null) return 0;
+                if (a.position === null) return 1;
+                if (b.position === null) return -1;
+                return a.position - b.position;
+            });
+
+            setGoals(sortedData.map(transformGoal));
         } catch (err) {
             // Error loading goals
         } finally {
@@ -103,7 +115,7 @@ export function useGoals() {
     useEffect(() => {
         if (isDemoMode) {
             const demoGoalsForYear = DEMO_GOALS.filter(g => g.year === selectedYear);
-            setGoals(demoGoalsForYear.map(transformGoal));
+            setGoals((demoGoalsForYear as GoalRow[]).map(transformGoal));
             setIsLoading(false);
             return;
         }
@@ -146,6 +158,8 @@ export function useGoals() {
                 setGoals(prev => [transformGoal(data), ...prev]);
             }
 
+            track('goal_created', { type: params.type, year: params.year });
+            notifySlack('goal_created', { userId: user.id }, params.title);
             return { success: true };
         } catch (err: any) {
             return { success: false, error: err.message };
@@ -183,6 +197,15 @@ export function useGoals() {
                 setGoals(prev => prev.map(g => g.id === params.id ? transformGoal(data) : g));
             }
 
+            track('goal_updated', {
+                has_title: params.title !== undefined,
+                has_description: params.description !== undefined,
+                has_type: params.type !== undefined,
+                has_percentage: params.percentage !== undefined,
+                has_monthly_status: params.monthlyStatus !== undefined,
+                has_target: params.targetValue !== undefined || params.targetUnit !== undefined,
+                has_monthly_progress: params.monthlyProgress !== undefined,
+            });
             return { success: true };
         } catch (err: any) {
             return { success: false, error: err.message };
@@ -209,7 +232,11 @@ export function useGoals() {
         goalId: string,
         percentage: number
     ): Promise<{ success: boolean; error?: string }> => {
-        return updateGoal({ id: goalId, percentage: Math.min(100, Math.max(0, percentage)) });
+        const result = await updateGoal({ id: goalId, percentage: Math.min(100, Math.max(0, percentage)) });
+        if (result.success) {
+            track('goal_progress_updated', { percentage: Math.min(100, Math.max(0, percentage)) });
+        }
+        return result;
     };
 
     // 월별 진행 상황 업데이트 (단일 월)
@@ -246,10 +273,39 @@ export function useGoals() {
             if (error) throw error;
 
             setGoals(prev => prev.filter(g => g.id !== goalId));
+            track('goal_deleted');
 
             return { success: true };
         } catch (err: any) {
             return { success: false, error: err.message };
+        }
+    };
+
+    // 목표 순서 변경
+    const reorderGoals = async (fromIndex: number, toIndex: number) => {
+        if (isDemoMode || !user) return;
+
+        // 로컬 상태 먼저 업데이트 (optimistic)
+        const newGoals = [...goals];
+        const [movedItem] = newGoals.splice(fromIndex, 1);
+        newGoals.splice(toIndex, 0, movedItem);
+        setGoals(newGoals);
+
+        // DB에 position 업데이트
+        try {
+            const updates = newGoals.map((goal, index) =>
+                supabase
+                    .from('goals')
+                    .update({ position: index })
+                    .eq('id', goal.id)
+                    .eq('user_id', user.id)
+            );
+            await Promise.all(updates);
+            track('goals_reordered', { count: newGoals.length });
+        } catch (err) {
+            console.error('[Goals] Failed to save order:', err);
+            // 실패 시 다시 불러오기
+            fetchGoals(selectedYear);
         }
     };
 
@@ -265,6 +321,7 @@ export function useGoals() {
         updatePercentage,
         updateMonthlyProgress,
         deleteGoal,
+        reorderGoals,
         refetch: () => fetchGoals(selectedYear),
     };
 }

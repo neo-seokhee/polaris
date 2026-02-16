@@ -15,9 +15,15 @@ export function DemoWelcomeModal({ visible, onClose }: DemoWelcomeModalProps) {
 
     const handleSignup = () => {
         onClose();
-        exitDemoMode();
-        router.push('/(auth)/signup');
+        router.push('/(tabs)/profile');
     };
+
+    const handleLogin = () => {
+        onClose();
+        exitDemoMode();
+        router.push('/(auth)/login');
+    };
+
 
     return (
         <Modal
@@ -62,9 +68,14 @@ export function DemoWelcomeModal({ visible, onClose }: DemoWelcomeModalProps) {
                         <Text style={styles.ctaButtonText}>회원가입하고 시작하기</Text>
                     </Pressable>
 
-                    <Pressable style={styles.laterButton} onPress={onClose}>
-                        <Text style={styles.laterButtonText}>먼저 둘러볼게요</Text>
-                    </Pressable>
+                    <View style={styles.bottomButtonsContainer}>
+                        <Pressable style={styles.secondaryButton} onPress={onClose}>
+                            <Text style={styles.secondaryButtonText}>둘러보기</Text>
+                        </Pressable>
+                        <Pressable style={styles.secondaryButton} onPress={handleLogin}>
+                            <Text style={styles.secondaryButtonText}>로그인</Text>
+                        </Pressable>
+                    </View>
                 </View>
             </View>
         </Modal>
@@ -149,11 +160,21 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Colors.textOnDark,
     },
-    laterButton: {
-        paddingVertical: Spacing.md,
+    bottomButtonsContainer: {
+        flexDirection: 'row',
+        gap: Spacing['2xl'],
+        width: '100%',
     },
-    laterButtonText: {
+    secondaryButton: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: Colors.borderPrimary,
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing.xl,
+        alignItems: 'center',
+    },
+    secondaryButtonText: {
         fontSize: FontSizes.base,
-        color: Colors.textMuted,
+        color: Colors.textSecondary,
     },
 });

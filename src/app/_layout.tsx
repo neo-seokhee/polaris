@@ -3,7 +3,10 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, StyleSheet, Platform, Text, TextInput } from "react-native";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { AnalyticsProvider } from "@/contexts/AnalyticsContext";
 import { DemoNudgeProvider } from "@/contexts/DemoNudgeContext";
+import { WebLayoutProvider, useWebLayout } from "@/contexts/WebLayoutContext";
+import { FeatureModulesProvider } from "@/contexts/FeatureModulesContext";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 
@@ -53,6 +56,33 @@ const setDefaultFont = () => {
 
 setDefaultFont();
 
+function AppContent() {
+    const { isTodoBoardWide, isSettlementCalendarWide } = useWebLayout();
+    const isWideFrame = isTodoBoardWide || isSettlementCalendarWide;
+
+    const content = (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <StatusBar style="light" />
+            <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            </Stack>
+        </GestureHandlerRootView>
+    );
+
+    if (Platform.OS === 'web') {
+        return (
+            <View style={styles.webContainer}>
+                <View style={[styles.mobileFrame, isWideFrame && styles.mobileFrameWide]}>
+                    {content}
+                </View>
+            </View>
+        );
+    }
+
+    return content;
+}
+
 export default function RootLayout() {
     const [fontsLoaded] = useFonts({
         "Pretendard": require("../../assets/fonts/Pretendard-Regular.otf"),
@@ -66,7 +96,11 @@ export default function RootLayout() {
 
     useEffect(() => {
         if (fontsLoaded) {
-            SplashScreen.hideAsync();
+            // 스플래시 화면 1.5초 유지 후 숨김
+            const timer = setTimeout(() => {
+                SplashScreen.hideAsync();
+            }, 1500);
+            return () => clearTimeout(timer);
         }
     }, [fontsLoaded]);
 
@@ -74,36 +108,17 @@ export default function RootLayout() {
         return null;
     }
 
-    const content = (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-            <StatusBar style="light" />
-            <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            </Stack>
-        </GestureHandlerRootView>
-    );
-
-    // 웹에서는 모바일 화면비 유지
-    if (Platform.OS === 'web') {
-        return (
-            <AuthProvider>
-                <DemoNudgeProvider>
-                    <View style={styles.webContainer}>
-                        <View style={styles.mobileFrame}>
-                            {content}
-                        </View>
-                    </View>
-                </DemoNudgeProvider>
-            </AuthProvider>
-        );
-    }
-
     return (
         <AuthProvider>
-            <DemoNudgeProvider>
-                {content}
-            </DemoNudgeProvider>
+            <AnalyticsProvider>
+                <DemoNudgeProvider>
+                    <FeatureModulesProvider>
+                        <WebLayoutProvider>
+                            <AppContent />
+                        </WebLayoutProvider>
+                    </FeatureModulesProvider>
+                </DemoNudgeProvider>
+            </AnalyticsProvider>
         </AuthProvider>
     );
 }
@@ -120,9 +135,16 @@ const styles = StyleSheet.create({
         maxWidth: 430, // iPhone 14 Pro Max width
         height: '100%',
         maxHeight: 932, // iPhone 14 Pro Max height
-        overflow: 'hidden',
+        overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
         ...(Platform.OS === 'web' && {
             boxShadow: '0 0 50px rgba(0, 0, 0, 0.5)',
+        }),
+    },
+    mobileFrameWide: {
+        maxWidth: '100%',
+        maxHeight: '100%',
+        ...(Platform.OS === 'web' && {
+            boxShadow: 'none',
         }),
     },
 });

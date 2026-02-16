@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
 import { fetchAndParseICS } from '@/lib/icalParser';
 import type { Database } from '@/lib/database.types';
 
@@ -11,6 +12,7 @@ type SyncedEventInsert = Database['public']['Tables']['synced_events']['Insert']
 
 export function useCalendarSubscriptions() {
     const { user } = useAuth();
+    const { track } = useAnalytics();
     const [subscriptions, setSubscriptions] = useState<CalendarSubscription[]>([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -57,6 +59,7 @@ export function useCalendarSubscriptions() {
             if (error) throw error;
 
             setSubscriptions((prev) => [...prev, data]);
+            track('calendar_subscription_added');
 
             await syncSubscription(data.id);
 
@@ -77,6 +80,7 @@ export function useCalendarSubscriptions() {
             if (error) throw error;
 
             setSubscriptions((prev) => prev.filter((sub) => sub.id !== id));
+            track('calendar_subscription_removed');
             return { error: null };
         } catch (err: any) {
             setError(err.message);
@@ -98,6 +102,11 @@ export function useCalendarSubscriptions() {
             setSubscriptions((prev) =>
                 prev.map((sub) => (sub.id === id ? data : sub))
             );
+            track('calendar_subscription_updated', {
+                has_name: Object.prototype.hasOwnProperty.call(updates, 'name'),
+                has_color: Object.prototype.hasOwnProperty.call(updates, 'color'),
+                has_enabled: Object.prototype.hasOwnProperty.call(updates, 'is_enabled'),
+            });
 
             return { data, error: null };
         } catch (err: any) {
@@ -214,10 +223,12 @@ export function useCalendarSubscriptions() {
             );
 
             console.log('[Sync] Sync completed. Events count:', events.length);
+            track('calendar_subscription_synced', { events_count: events.length });
             return { error: null, eventsCount: events.length };
         } catch (err: any) {
             console.error('[Sync] Error:', err);
             setError(err.message);
+            track('calendar_subscription_sync_failed');
             return { error: err.message };
         } finally {
             setSyncing(false);

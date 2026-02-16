@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAnalytics } from '@/contexts/AnalyticsContext';
 import type { Database } from '@/lib/database.types';
 import { DEMO_AFFIRMATIONS } from '@/data/demoData';
 
@@ -10,6 +11,7 @@ const DEFAULT_MESSAGE = '오늘 하루도 힘내세요';
 
 export function useAffirmation() {
     const { user, isDemoMode } = useAuth();
+    const { track } = useAnalytics();
     const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
     const [selectedText, setSelectedText] = useState<string>(DEFAULT_MESSAGE);
     const [loading, setLoading] = useState(true);
@@ -62,6 +64,7 @@ export function useAffirmation() {
         } while (newIndex === currentIndex && affirmations.length > 1);
 
         setSelectedText(affirmations[newIndex].text);
+        track('affirmation_shuffled');
     }, [affirmations, selectedText]);
 
     const addAffirmation = async (text: string) => {
@@ -83,6 +86,7 @@ export function useAffirmation() {
                 setSelectedText(data.text);
                 initialRandomDone.current = true;
             }
+            track('affirmation_created');
         } catch (err) {
             console.error('Error adding affirmation:', err);
         }
@@ -111,6 +115,7 @@ export function useAffirmation() {
             if (oldAffirmation && oldAffirmation.text === selectedText) {
                 setSelectedText(data.text);
             }
+            track('affirmation_updated');
         } catch (err) {
             console.error('Error updating affirmation:', err);
         }
@@ -140,6 +145,7 @@ export function useAffirmation() {
                     setSelectedText(DEFAULT_MESSAGE);
                 }
             }
+            track('affirmation_deleted');
         } catch (err) {
             console.error('Error deleting affirmation:', err);
         }

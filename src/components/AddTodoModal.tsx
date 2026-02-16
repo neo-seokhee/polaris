@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { View, Text, TextInput, StyleSheet, Modal, TextInput as TextInputType, InteractionManager, Keyboard } from "react-native";
+import { View, Text, TextInput, StyleSheet, Modal, TextInput as TextInputType, InteractionManager, Keyboard, KeyboardAvoidingView, Platform } from "react-native";
 import { GestureHandlerRootView, TouchableOpacity } from "react-native-gesture-handler";
 import { X } from "lucide-react-native";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
@@ -7,11 +7,12 @@ import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
 interface AddTodoModalProps {
     visible: boolean;
     onClose: () => void;
-    onAdd: (title: string) => Promise<void>;
+    onAdd: (title: string, memo?: string | null) => Promise<void>;
 }
 
 export function AddTodoModal({ visible, onClose, onAdd }: AddTodoModalProps) {
     const [title, setTitle] = useState("");
+    const [memo, setMemo] = useState("");
     const [loading, setLoading] = useState(false);
     const inputRef = useRef<TextInputType>(null);
 
@@ -29,12 +30,16 @@ export function AddTodoModal({ visible, onClose, onAdd }: AddTodoModalProps) {
 
         Keyboard.dismiss();
         setLoading(true);
-        await onAdd(title);
-        setLoading(false);
-
-        // Reset and close
-        setTitle("");
-        onClose();
+        try {
+            await onAdd(title, memo.trim() ? memo.trim() : null);
+            setTitle("");
+            setMemo("");
+            onClose();
+        } catch (error) {
+            console.error('Failed to add todo:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -46,39 +51,58 @@ export function AddTodoModal({ visible, onClose, onAdd }: AddTodoModalProps) {
             onShow={handleShow}
         >
             <GestureHandlerRootView style={styles.overlay}>
-                <View style={styles.modal}>
-                    <View style={styles.header}>
-                        <Text style={styles.title}>새 할일 추가</Text>
-                        <TouchableOpacity onPress={onClose}>
-                            <X size={24} color={Colors.textMuted} />
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.keyboardAvoidingView}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+                >
+                    <View style={styles.modal}>
+                        <View style={styles.header}>
+                            <Text style={styles.title}>새 할일 추가</Text>
+                            <TouchableOpacity onPress={onClose}>
+                                <X size={24} color={Colors.textMuted} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.form}>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>할일</Text>
+                                <TextInput
+                                    ref={inputRef}
+                                    style={styles.input}
+                                    placeholder="할일을 입력하세요"
+                                    placeholderTextColor={Colors.textMuted}
+                                    value={title}
+                                    onChangeText={setTitle}
+                                    returnKeyType="done"
+                                    onSubmitEditing={handleAdd}
+                                />
+                            </View>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>메모 (선택)</Text>
+                                <TextInput
+                                    style={[styles.input, styles.memoInput]}
+                                    placeholder="메모를 입력하세요 (URL 포함 가능)"
+                                    placeholderTextColor={Colors.textMuted}
+                                    value={memo}
+                                    onChangeText={setMemo}
+                                    multiline
+                                    numberOfLines={4}
+                                    textAlignVertical="top"
+                                />
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[styles.button, styles.buttonPrimary]}
+                            onPress={handleAdd}
+                        >
+                            <Text style={styles.buttonTextPrimary}>
+                                {loading ? "추가 중..." : "추가"}
+                            </Text>
                         </TouchableOpacity>
                     </View>
-
-                    <View style={styles.form}>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>할일</Text>
-                            <TextInput
-                                ref={inputRef}
-                                style={styles.input}
-                                placeholder="할일을 입력하세요"
-                                placeholderTextColor={Colors.textMuted}
-                                value={title}
-                                onChangeText={setTitle}
-                                returnKeyType="done"
-                                onSubmitEditing={handleAdd}
-                            />
-                        </View>
-                    </View>
-
-                    <TouchableOpacity
-                        style={[styles.button, styles.buttonPrimary]}
-                        onPress={handleAdd}
-                    >
-                        <Text style={styles.buttonTextPrimary}>
-                            {loading ? "추가 중..." : "추가"}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+                </KeyboardAvoidingView>
             </GestureHandlerRootView>
         </Modal>
     );
@@ -88,13 +112,22 @@ const styles = StyleSheet.create({
     overlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    keyboardAvoidingView: {
+        width: '100%',
+        alignItems: 'center',
+        paddingHorizontal: Spacing['3xl'],
     },
     modal: {
-        backgroundColor: Colors.bgSecondary,
-        borderTopLeftRadius: BorderRadius['3xl'],
-        borderTopRightRadius: BorderRadius['3xl'],
-        padding: Spacing['4xl'],
+        width: '100%',
+        maxWidth: 420,
+        backgroundColor: Colors.bgCard,
+        borderRadius: BorderRadius.xl,
+        borderWidth: 1,
+        borderColor: Colors.borderPrimary,
+        padding: Spacing['3xl'],
         gap: Spacing['3xl'],
     },
     header: {
@@ -126,6 +159,9 @@ const styles = StyleSheet.create({
         padding: Spacing['2xl'],
         fontSize: FontSizes.base,
         color: Colors.textPrimary,
+    },
+    memoInput: {
+        minHeight: 96,
     },
     button: {
         padding: Spacing['2xl'],

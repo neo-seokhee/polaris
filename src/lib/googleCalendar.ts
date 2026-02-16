@@ -1,5 +1,6 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+import * as ExpoLinking from 'expo-linking';
 import { Platform } from 'react-native';
 
 // OAuth 완료 후 브라우저 세션 정리
@@ -68,10 +69,19 @@ export interface UpdateEventParams extends CreateEventParams {
 
 // Redirect URI 생성
 export function getRedirectUri(): string {
-    return AuthSession.makeRedirectUri({
-        scheme: 'polaris',
-        path: 'google-callback',
-    });
+    let uri: string;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        // 웹: 현재 origin에서 /google-callback 경로 사용
+        uri = `${window.location.origin}/google-callback`;
+    } else {
+        // 모바일 (iOS/Android): 웹 URL 사용
+        // Google OAuth는 custom scheme을 지원하지 않으므로 웹 URL로 리다이렉트
+        uri = 'https://gopolaris.app/google-callback';
+    }
+
+    console.log('[Google OAuth] Redirect URI:', uri);
+    return uri;
 }
 
 // Auth Request 생성을 위한 설정 반환

@@ -14,6 +14,7 @@ export interface Database {
                     id: string
                     email: string | null
                     name: string | null
+                    phone: string | null
                     avatar_url: string | null
                     created_at: string
                     updated_at: string
@@ -22,6 +23,7 @@ export interface Database {
                     id: string
                     email?: string | null
                     name?: string | null
+                    phone?: string | null
                     avatar_url?: string | null
                     created_at?: string
                     updated_at?: string
@@ -30,6 +32,7 @@ export interface Database {
                     id?: string
                     email?: string | null
                     name?: string | null
+                    phone?: string | null
                     avatar_url?: string | null
                     created_at?: string
                     updated_at?: string
@@ -40,10 +43,12 @@ export interface Database {
                     id: string
                     user_id: string
                     title: string
+                    memo: string | null
                     time: string | null
                     is_active: boolean
                     is_completed: boolean
                     position?: number
+                    category?: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -51,10 +56,12 @@ export interface Database {
                     id?: string
                     user_id: string
                     title: string
+                    memo?: string | null
                     time?: string | null
                     is_active?: boolean
                     is_completed?: boolean
                     position?: number
+                    category?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -62,12 +69,34 @@ export interface Database {
                     id?: string
                     user_id?: string
                     title?: string
+                    memo?: string | null
                     time?: string | null
                     is_active?: boolean
                     is_completed?: boolean
                     position?: number
+                    category?: string | null
                     created_at?: string
                     updated_at?: string
+                }
+            }
+            todo_categories: {
+                Row: {
+                    id: string
+                    user_id: string
+                    name: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    name: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    name?: string
+                    created_at?: string
                 }
             }
             goals: {
@@ -84,6 +113,7 @@ export interface Database {
                     target_value: number | null
                     target_unit: string | null
                     monthly_progress: number[] | null
+                    position: number | null
                     created_at: string
                     updated_at: string
                 }
@@ -100,6 +130,7 @@ export interface Database {
                     target_value?: number | null
                     target_unit?: string | null
                     monthly_progress?: number[] | null
+                    position?: number | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -116,6 +147,7 @@ export interface Database {
                     target_value?: number | null
                     target_unit?: string | null
                     monthly_progress?: number[] | null
+                    position?: number | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -185,6 +217,100 @@ export interface Database {
                     is_starred?: boolean
                     created_at?: string
                     updated_at?: string
+                }
+            }
+            settlement_jobs: {
+                Row: {
+                    id: string
+                    user_id: string
+                    title: string
+                    client: string | null
+                    job_type: 'shoot_only' | 'edit_only' | 'shoot_edit'
+                    work_date: string | null
+                    edit_date: string | null
+                    delivery_date: string | null
+                    unit_price: number
+                    payment_due_date: string | null
+                    status: 'before_work' | 'in_progress' | 'work_done' | 'paid'
+                    shoot_done: boolean
+                    edit_done: boolean
+                    delivery_done: boolean
+                    is_paid: boolean
+                    paid_at: string | null
+                    sort_order: number
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    title: string
+                    client?: string | null
+                    job_type?: 'shoot_only' | 'edit_only' | 'shoot_edit'
+                    work_date?: string | null
+                    edit_date?: string | null
+                    delivery_date?: string | null
+                    unit_price?: number
+                    payment_due_date?: string | null
+                    status?: 'before_work' | 'in_progress' | 'work_done' | 'paid'
+                    shoot_done?: boolean
+                    edit_done?: boolean
+                    delivery_done?: boolean
+                    is_paid?: boolean
+                    paid_at?: string | null
+                    sort_order?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    title?: string
+                    client?: string | null
+                    job_type?: 'shoot_only' | 'edit_only' | 'shoot_edit'
+                    work_date?: string | null
+                    edit_date?: string | null
+                    delivery_date?: string | null
+                    unit_price?: number
+                    payment_due_date?: string | null
+                    status?: 'before_work' | 'in_progress' | 'work_done' | 'paid'
+                    shoot_done?: boolean
+                    edit_done?: boolean
+                    delivery_done?: boolean
+                    is_paid?: boolean
+                    paid_at?: string | null
+                    sort_order?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            compass_messages: {
+                Row: {
+                    id: string
+                    user_id: string
+                    role: 'user' | 'assistant'
+                    content: string
+                    follow_up_question: string | null
+                    suggested_todos: Json
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    role: 'user' | 'assistant'
+                    content: string
+                    follow_up_question?: string | null
+                    suggested_todos?: Json
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    role?: 'user' | 'assistant'
+                    content?: string
+                    follow_up_question?: string | null
+                    suggested_todos?: Json
+                    created_at?: string
                 }
             }
             affirmations: {
@@ -271,8 +397,7 @@ export interface Database {
             synced_events: {
                 Row: {
                     id: string
-                    user_id: string
-                    calendar_id: string
+                    subscription_id: string
                     uid: string
                     title: string
                     start_time: string
@@ -283,8 +408,7 @@ export interface Database {
                 }
                 Insert: {
                     id?: string
-                    user_id: string
-                    calendar_id: string
+                    subscription_id: string
                     uid: string
                     title: string
                     start_time: string
@@ -295,8 +419,7 @@ export interface Database {
                 }
                 Update: {
                     id?: string
-                    user_id?: string
-                    calendar_id?: string
+                    subscription_id?: string
                     uid?: string
                     title?: string
                     start_time?: string

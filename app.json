@@ -2,13 +2,13 @@
   "expo": {
     "name": "Polaris",
     "slug": "polaris",
-    "version": "1.0.0",
+    "version": "1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "polaris",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/polaris_splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0A0A0B"
     },
@@ -17,14 +17,21 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.polaris.app"
+      "bundleIdentifier": "com.theforgeindustries.polaris",
+      "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:gopolaris.app"
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0B"
       },
-      "package": "com.polaris.app"
+      "package": "com.theforgeindustries.polaris"
     },
     "web": {
       "bundler": "metro",
@@ -37,7 +44,8 @@
       "expo-font",
       "expo-splash-screen",
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true
@@ -49,9 +57,7 @@
       }
     },
     "owner": "neo_seokhee",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.1",
     "updates": {
       "url": "https://u.expo.dev/550e6aff-b1a1-4a58-b2bd-64626a79ea3f"
     }

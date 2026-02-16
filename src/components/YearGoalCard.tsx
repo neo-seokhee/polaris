@@ -4,6 +4,7 @@ import RenderHtml from "react-native-render-html";
 import { Edit3, Check, X } from "lucide-react-native";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
+import { sanitizeRichHtml } from "@/lib/richText";
 
 interface YearGoalCardProps {
     year: number;
@@ -17,8 +18,6 @@ export function YearGoalCard({ year, content, isLoading, onSave }: YearGoalCardP
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState(content);
     const [isSaving, setIsSaving] = useState(false);
-
-    // 콘텐츠 너비 계산 (카드 패딩 제외)
     const contentWidth = width - Spacing['3xl'] * 2 - Spacing['2xl'] * 2;
 
     useEffect(() => {
@@ -28,7 +27,7 @@ export function YearGoalCard({ year, content, isLoading, onSave }: YearGoalCardP
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const result = await onSave(editContent);
+            const result = await onSave(sanitizeRichHtml(editContent));
             if (result.success) {
                 setIsEditing(false);
             } else {
@@ -51,7 +50,6 @@ export function YearGoalCard({ year, content, isLoading, onSave }: YearGoalCardP
         setIsEditing(true);
     };
 
-    // HTML 콘텐츠가 비어있는지 확인
     const isContentEmpty = !content || content === '<p></p>' || content === '<br>' || content.replace(/<[^>]*>/g, '').trim() === '';
 
     if (isLoading) {

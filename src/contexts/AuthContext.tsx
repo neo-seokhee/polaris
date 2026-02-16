@@ -2,12 +2,14 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
+import * as ExpoLinking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
 import {
     isKakaoConfigured,
     getKakaoAuthRequestConfig,
     exchangeKakaoCodeForTokens,
     getKakaoUserInfo,
+    formatKakaoPhoneNumber,
 } from '@/lib/kakaoOAuth';
 import {
     signInWithApple as appleSignIn,
@@ -69,22 +71,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const handleDeepLink = async (event: { url: string }) => {
             console.log('[DeepLink] Received URL:', event.url);
             try {
-                const url = new URL(event.url);
-                // polaris://auth-callback?access_token=...&refresh_token=...
-                if (url.host === 'auth-callback' || url.pathname === '/auth-callback') {
-                    const accessToken = url.searchParams.get('access_token');
-                    const refreshToken = url.searchParams.get('refresh_token');
+                // URL에서 auth-callback 경로인지 확인
+                // Expo Go: exp://192.168.x.x:8081/--/auth-callback?...
+                // Standalone: polaris://auth-callback?...
+                const isAuthCallback = event.url.includes('auth-callback');
 
-                    console.log('[DeepLink] Auth callback detected, tokens present:', !!accessToken, !!refreshToken);
+                if (isAuthCallback) {
+                    // URL에서 쿼리 파라미터 추출
+                    const urlParts = event.url.split('?');
+                    const queryString = urlParts[1] || '';
+                    const searchParams = new URLSearchParams(queryString);
+
+                    const accessToken = searchParams.get('access_token');
+                    const refreshToken = searchParams.get('refresh_token');
+                    const error = searchParams.get('error');
+
+                    console.log('[DeepLink] Auth callback detected, tokens present:', !!accessToken, !!refreshToken, 'error:', error);
+
+                    if (error) {
+                        console.log('[DeepLink] Auth callback returned error:', error);
+                        return;
+                    }
 
                     if (accessToken && refreshToken) {
-                        const { data, error } = await supabase.auth.setSession({
+                        const { data, error: sessionError } = await supabase.auth.setSession({
                             access_token: accessToken,
                             refresh_token: refreshToken,
                         });
 
-                        if (error) {
-                            console.log('[DeepLink] Session restore error:', error.message);
+                        if (sessionError) {
+                            console.log('[DeepLink] Session restore error:', sessionError.message);
                         } else if (data.user) {
                             console.log('[DeepLink] Session restored for user:', data.user.id);
                             trackEvent('user_signed_in', { auth_method: 'deep_link' });
@@ -171,8 +187,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             };
 
-            // 백그라운드에서 phone 저장 (회원가입 완료는 기다리지 않음)
-            savePhone();
+            // phone 저장 완료 대기 (iOS에서 fire-and-forget은 중단될 수 있음)
+            await savePhone();
 
             trackEvent('user_signed_up', { auth_method: 'email' });
             identifyUser(data.user.id, { email, name, phone });
@@ -210,58 +226,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const deleteAccount = async (): Promise<{ error: any }> => {
+        console.log('[DeleteAccount] START - Function called');
+
         if (!user) {
+            console.log('[DeleteAccount] ERROR - No user found');
             return { error: new Error('로그인이 필요합니다.') };
         }
 
         try {
             const userId = user.id;
+            const userEmail = user.email;
+            console.log('[DeleteAccount] User info:', { userId, userEmail });
 
-            // 1. 사용자 관련 데이터 삭제 (todos, goals, memos, schedules)
-            // cascade 삭제가 설정되어 있지 않은 경우 수동으로 삭제
-            const deletePromises = [
-                supabase.from('todos').delete().eq('user_id', userId),
-                supabase.from('goals').delete().eq('user_id', userId),
-                supabase.from('memos').delete().eq('user_id', userId),
-                supabase.from('schedules').delete().eq('user_id', userId),
-            ];
+            // Get current session for auth header
+            console.log('[DeleteAccount] Getting session...');
+            const { data: sessionData } = await supabase.auth.getSession();
+            console.log('[DeleteAccount] Session obtained:', !!sessionData.session);
 
-            const results = await Promise.all(deletePromises);
-            const deleteErrors = results.filter(r => r.error);
-            if (deleteErrors.length > 0) {
-                console.log('[DeleteAccount] Some data deletion failed:', deleteErrors);
-                // 데이터 삭제 실패해도 계속 진행 (사용자 삭제가 더 중요)
+            if (!sessionData.session) {
+                console.log('[DeleteAccount] ERROR - No session found');
+                return { error: new Error('세션이 만료되었습니다.') };
             }
 
-            // 2. users 테이블에서 삭제
-            const { error: userDeleteError } = await supabase
-                .from('users')
-                .delete()
-                .eq('id', userId);
+            console.log('[DeleteAccount] Calling Edge Function delete-account...');
+            console.log('[DeleteAccount] Access token present:', !!sessionData.session.access_token);
 
-            if (userDeleteError) {
-                console.log('[DeleteAccount] User table delete error:', userDeleteError);
+            // Call Edge Function using direct fetch for better debugging
+            const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+            const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+            console.log('[DeleteAccount] Supabase URL:', supabaseUrl);
+            console.log('[DeleteAccount] Anon key first 20 chars:', supabaseAnonKey?.substring(0, 20));
+            console.log('[DeleteAccount] Access token first 20 chars:', sessionData.session.access_token.substring(0, 20));
+
+            // Get kakao_id from user metadata if available
+            const kakaoId = user.user_metadata?.kakao_id;
+            console.log('[DeleteAccount] Kakao ID:', kakaoId || 'not found');
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    access_token: sessionData.session.access_token,
+                    kakao_id: kakaoId,
+                }),
+            });
+
+            console.log('[DeleteAccount] Response status:', response.status);
+            const responseText = await response.text();
+            console.log('[DeleteAccount] Response body:', responseText);
+
+            if (!response.ok) {
+                console.log('[DeleteAccount] Edge Function failed with status:', response.status);
+                return { error: new Error('계정 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.') };
             }
 
-            // 3. Supabase auth 사용자 삭제 (RPC 함수 사용)
-            // 참고: Supabase는 클라이언트에서 직접 auth.admin.deleteUser를 호출할 수 없음
-            // Edge Function 또는 RPC 함수가 필요하지만, 여기서는 로그아웃 처리만 진행
-            // 실제 auth 사용자 삭제는 서버에서 처리해야 함
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (e) {
+                console.log('[DeleteAccount] Could not parse response as JSON');
+            }
 
+            if (data?.error) {
+                console.log('[DeleteAccount] Edge Function returned error:', data.error);
+                return { error: new Error('계정 삭제에 실패했습니다.') };
+            }
+
+            console.log('[DeleteAccount] Account deleted successfully');
+
+            // Track and notify
             trackEvent('account_deleted');
-            notifySlack('account_deleted', { userId, email: user.email });
+            notifySlack('account_deleted', { userId, email: userEmail });
 
-            // 4. 세션 정리 및 로그아웃
+            // Clear local session
+            console.log('[DeleteAccount] Cleaning up local session...');
             resetAnalytics();
             await supabase.auth.signOut({ scope: 'local' });
             setSession(null);
             setUser(null);
             setIsDemoMode(true);
+            console.log('[DeleteAccount] Cleanup complete');
 
             return { error: null };
         } catch (error) {
-            console.log('[DeleteAccount] Error:', error);
-            return { error };
+            console.log('[DeleteAccount] CATCH - Unexpected error:', error);
+            console.log('[DeleteAccount] Error type:', typeof error);
+            console.log('[DeleteAccount] Error details:', JSON.stringify(error));
+            return { error: new Error('계정 삭제 중 오류가 발생했습니다.') };
         }
     };
 
@@ -382,8 +437,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('[Kakao Login] Starting Kakao login...');
             console.log('[Kakao Login] Redirect URI:', kakaoConfig.redirectUri);
 
-            // 카카오 인증 URL 구성
-            const authUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${kakaoConfig.clientId}&redirect_uri=${encodeURIComponent(kakaoConfig.redirectUri)}&response_type=code&scope=${kakaoConfig.scopes.join(',')}`;
+            // 앱으로 복귀할 URL (Expo Go에서는 exp://, 빌드된 앱에서는 polaris://)
+            const appCallbackUrl = ExpoLinking.createURL('auth-callback');
+            console.log('[Kakao Login] App callback URL:', appCallbackUrl);
+
+            // state 파라미터에 앱 콜백 URL 포함 (웹 콜백에서 사용)
+            const stateData = Platform.OS !== 'web'
+                ? JSON.stringify({ mobile: true, callbackUrl: appCallbackUrl })
+                : '';
+            const stateParam = stateData ? `&state=${encodeURIComponent(stateData)}` : '';
+
+            const authUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${kakaoConfig.clientId}&redirect_uri=${encodeURIComponent(kakaoConfig.redirectUri)}&response_type=code&scope=${kakaoConfig.scopes.join(',')}${stateParam}`;
 
             if (Platform.OS === 'web') {
                 // 웹: 페이지 리다이렉트 방식
@@ -393,12 +457,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             // iOS/Android: 인앱 브라우저(ASWebAuthenticationSession)로 카카오 인증
             // 흐름: 카카오 인증 → gopolaris.app/kakao-callback (웹에서 토큰 교환)
-            //      → polaris://auth-callback (토큰과 함께 앱으로 복귀)
-            // openAuthSessionAsync는 polaris:// 스킴을 감지하면 브라우저 닫고 URL 반환
+            //      → 앱 콜백 URL (토큰과 함께 앱으로 복귀)
+            // openAuthSessionAsync는 앱 콜백 URL 스킴을 감지하면 브라우저 닫고 URL 반환
             console.log('[Kakao Login] Opening in-app browser for auth...');
             const result = await WebBrowser.openAuthSessionAsync(
                 authUrl,
-                'polaris://auth-callback'  // 웹 페이지가 최종적으로 리다이렉트하는 URL
+                appCallbackUrl  // 동적으로 생성된 앱 콜백 URL
             );
 
             if (result.type !== 'success' || !result.url) {
@@ -435,8 +499,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { error: null };
             }
 
-            // Case 2: 카카오에서 바로 앱으로 리다이렉트된 경우 (code 포함)
-            // URL: https://gopolaris.app/kakao-callback?code=...
+            // Case 2: 웹 콜백에서 code만 전달받은 경우 (앱에서 직접 토큰 교환)
+            // URL: polaris://auth-callback?code=...
             const code = url.searchParams.get('code');
             if (!code) {
                 // 웹 콜백에서 에러가 발생했거나 토큰/코드가 없는 경우
@@ -454,9 +518,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('[Kakao Login] Got tokens, fetching user info...');
 
             const kakaoUser = await getKakaoUserInfo(tokens.access_token);
-            console.log('[Kakao Login] Got user info, kakao_id:', kakaoUser.id);
+            console.log('[Kakao Login] Full kakao_account:', JSON.stringify(kakaoUser.kakao_account));
+            console.log('[Kakao Login] Auth URL scopes:', kakaoConfig.scopes);
+
+            // 디버그: Slack으로 카카오 응답 전송
+            notifySlack('kakao_debug', {
+                email: kakaoUser.kakao_account?.email || 'no email',
+                phone: kakaoUser.kakao_account?.phone_number || 'no phone_number in response',
+                name: kakaoUser.kakao_account?.profile?.nickname || 'no nickname',
+            }, `Platform: ${Platform.OS}\nScopes: ${kakaoConfig.scopes.join(',')}\nkakao_account keys: ${Object.keys(kakaoUser.kakao_account || {}).join(', ')}`);
 
             const email = kakaoUser.kakao_account?.email;
+            const phone = formatKakaoPhoneNumber(kakaoUser.kakao_account?.phone_number);
+            console.log('[Kakao Login] Phone from Kakao:', kakaoUser.kakao_account?.phone_number, '→', phone);
             if (!email) {
                 return { error: new Error('이메일 정보를 가져올 수 없습니다. 카카오 계정에 이메일이 등록되어 있는지 확인해주세요.') };
             }
@@ -477,6 +551,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         data: {
                             name: kakaoUser.kakao_account?.profile?.nickname || email.split('@')[0],
                             kakao_id: kakaoUser.id.toString(),
+                            phone,
                         },
                     },
                 });
@@ -486,14 +561,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     return { error: signUpError };
                 }
 
+                // If signup succeeded but no session (email confirmation required), sign in
+                if (signUpData.user && !signUpData.session) {
+                    console.log('[Kakao Login] Signup succeeded but no session, attempting sign in...');
+                    const { error: postSignUpError } = await supabase.auth.signInWithPassword({
+                        email,
+                        password: `kakao_${kakaoUser.id}`,
+                    });
+                    if (postSignUpError) {
+                        console.log('[Kakao Login] Post-signup sign in failed:', postSignUpError.message);
+                        return { error: postSignUpError };
+                    }
+                }
+
                 if (signUpData.user) {
                     console.log('[Kakao Login] Sign up successful');
+
+                    // public.users 테이블에 phone 저장
+                    if (phone) {
+                        const savePhone = async (retries = 3) => {
+                            for (let i = 0; i < retries; i++) {
+                                await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+                                const { error: updateError } = await supabase
+                                    .from('users')
+                                    .update({ phone })
+                                    .eq('id', signUpData.user!.id);
+                                if (!updateError) {
+                                    console.log('[Kakao Login] Phone saved successfully');
+                                    return;
+                                }
+                                console.log(`[Kakao Login] Phone save attempt ${i + 1} failed:`, updateError.message);
+                            }
+                        };
+                        await savePhone();
+                    }
+
                     trackEvent('user_signed_up', { auth_method: 'kakao' });
-                    identifyUser(signUpData.user.id, { email, name: kakaoUser.kakao_account?.profile?.nickname });
-                    notifySlack('user_signed_up', { email, name: kakaoUser.kakao_account?.profile?.nickname, auth_method: 'kakao' });
+                    identifyUser(signUpData.user.id, { email, name: kakaoUser.kakao_account?.profile?.nickname, phone });
+                    notifySlack('user_signed_up', { email, phone, name: kakaoUser.kakao_account?.profile?.nickname, auth_method: 'kakao' });
                 }
             } else {
                 console.log('[Kakao Login] Sign in successful');
+
+                // 기존 사용자도 전화번호가 없으면 업데이트
+                if (phone) {
+                    const { data: { user: currentUser } } = await supabase.auth.getUser();
+                    if (currentUser) {
+                        const { error: phoneError } = await supabase
+                            .from('users')
+                            .update({ phone })
+                            .eq('id', currentUser.id);
+                        if (phoneError) console.log('[Kakao Login] Phone update failed:', phoneError.message);
+                        else console.log('[Kakao Login] Phone updated for existing user');
+                    }
+                }
+
                 trackEvent('user_signed_in', { auth_method: 'kakao' });
             }
 

@@ -1,20 +1,37 @@
-import { Redirect, Tabs } from "expo-router";
-import { ListChecks, Target, Calendar, StickyNote, Settings } from "lucide-react-native";
+import { Redirect, Tabs, usePathname } from "expo-router";
+import { Menu } from "lucide-react-native";
 import { useAuth } from "@/contexts/AuthContext";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator, StyleSheet, Pressable } from "react-native";
+import { WindroseIcon } from "@/components/icons/WindroseIcon";
+import { useFeatureModules } from "@/contexts/FeatureModulesContext";
+import { FEATURE_MODULE_MAP } from "@/modules/featureModules";
 
 const Colors = {
     bgSecondary: '#111113',
+    bgTertiary: '#1A1A1D',
     borderSecondary: '#1F1F23',
     accent: '#FFD700',
     textMuted: '#6B6B70',
+    textPrimary: '#FFFFFF',
+    textOnDark: '#0A0A0B',
     bgPrimary: '#0A0A0B',
 };
 
 export default function TabLayout() {
     const { user, loading, isDemoMode } = useAuth();
+    const { shortcuts, ready: moduleReady } = useFeatureModules();
+    const pathname = usePathname();
+    const isCompassActive = pathname?.includes("/compass");
 
     if (loading) {
+        return (
+            <View style={styles.loading}>
+                <ActivityIndicator size="large" color={Colors.accent} />
+            </View>
+        );
+    }
+
+    if (!moduleReady) {
         return (
             <View style={styles.loading}>
                 <ActivityIndicator size="large" color={Colors.accent} />
@@ -27,15 +44,23 @@ export default function TabLayout() {
         return <Redirect href="/(auth)/login" />;
     }
 
+    const slot1Module = FEATURE_MODULE_MAP[shortcuts.slot1];
+    const slot2Module = FEATURE_MODULE_MAP[shortcuts.slot2];
+    const slot4Module = FEATURE_MODULE_MAP[shortcuts.slot4];
+    const Slot1Icon = slot1Module.icon;
+    const Slot2Icon = slot2Module.icon;
+    const Slot4Icon = slot4Module.icon;
+
     return (
         <Tabs
+            initialRouteName="slot1"
             screenOptions={{
                 headerShown: false,
                 tabBarStyle: {
                     backgroundColor: Colors.bgSecondary,
                     borderTopColor: Colors.borderSecondary,
                     borderTopWidth: 1,
-                    height: 80,
+                    height: 86,
                     paddingBottom: 12,
                     paddingTop: 12,
                 },
@@ -48,40 +73,57 @@ export default function TabLayout() {
             }}
         >
             <Tabs.Screen
-                name="index"
+                name="slot1"
                 options={{
-                    title: "할일",
-                    tabBarIcon: ({ color, size }) => <ListChecks color={color} size={size} />,
+                    title: slot1Module.tabLabel,
+                    tabBarIcon: ({ color, size }) => <Slot1Icon color={color} size={size} />,
                 }}
             />
             <Tabs.Screen
                 name="schedule"
                 options={{
-                    title: "일정",
-                    tabBarIcon: ({ color, size }) => <Calendar color={color} size={size} />,
+                    href: null,
                 }}
             />
             <Tabs.Screen
-                name="goals"
+                name="slot2"
                 options={{
-                    title: "목표",
-                    tabBarIcon: ({ color, size }) => <Target color={color} size={size} />,
+                    title: slot2Module.tabLabel,
+                    tabBarIcon: ({ color, size }) => <Slot2Icon color={color} size={size} />,
                 }}
             />
             <Tabs.Screen
-                name="memo"
+                name="compass"
                 options={{
-                    title: "메모",
-                    tabBarIcon: ({ color, size }) => <StickyNote color={color} size={size} />,
+                    title: "컴파스",
+                    tabBarButton: ({ onPress }) => {
+                        return (
+                            <Pressable style={styles.compassTabButtonWrap} onPress={onPress}>
+                                <View style={[styles.compassTabButton, isCompassActive && styles.compassTabButtonActive]}>
+                                    <WindroseIcon color={isCompassActive ? Colors.accent : Colors.textPrimary} size={30} />
+                                </View>
+                            </Pressable>
+                        );
+                    },
+                }}
+            />
+            <Tabs.Screen
+                name="slot4"
+                options={{
+                    title: slot4Module.tabLabel,
+                    tabBarIcon: ({ color, size }) => <Slot4Icon color={color} size={size} />,
                 }}
             />
             <Tabs.Screen
                 name="profile"
                 options={{
-                    title: "설정",
-                    tabBarIcon: ({ color, size }) => <Settings color={color} size={size} />,
+                    title: "더보기",
+                    tabBarIcon: ({ color, size }) => <Menu color={color} size={size} />,
                 }}
             />
+            <Tabs.Screen name="index" options={{ href: null }} />
+            <Tabs.Screen name="goals" options={{ href: null }} />
+            <Tabs.Screen name="memo" options={{ href: null }} />
         </Tabs>
     );
 }
@@ -92,5 +134,28 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: Colors.bgPrimary,
+    },
+    compassTabButtonWrap: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: -18,
+    },
+    compassTabButton: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
+        backgroundColor: Colors.bgTertiary,
+        borderWidth: 1,
+        borderColor: Colors.borderSecondary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.35)',
+        elevation: 8,
+    },
+    compassTabButtonActive: {
+        backgroundColor: Colors.bgTertiary,
+        borderColor: Colors.borderSecondary,
+        borderWidth: 1,
     },
 });

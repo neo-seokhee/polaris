@@ -6,9 +6,12 @@ import { DDaySection } from "@/components/DDaySection";
 import { TodoSection } from "@/components/TodoSection";
 import { DemoBanner } from "@/components/DemoBanner";
 import { useAffirmation } from "@/hooks/useAffirmation";
+import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors, Spacing } from "@/constants/theme";
 
-export default function HomeScreen() {
+export function HomeScreen() {
+    useScreenTracking('screen_home');
+
     const {
         text: affirmationText,
         affirmations,
@@ -38,7 +41,7 @@ export default function HomeScreen() {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <DemoBanner />
             <View style={styles.fixedHeader}>
                 <DateHeader />
@@ -47,6 +50,8 @@ export default function HomeScreen() {
         </SafeAreaView>
     );
 }
+
+export default HomeScreen;
 
 const styles = StyleSheet.create({
     container: {

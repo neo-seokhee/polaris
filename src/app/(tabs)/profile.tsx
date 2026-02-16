@@ -1,19 +1,31 @@
 import { View, Text, ScrollView, StyleSheet, Image, TouchableOpacity, Pressable, Alert, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, type ComponentType } from "react";
 import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { supabase } from "@/lib/supabase";
-import { Settings, Bell, MessageSquare, Info, ChevronRight, Sparkles } from "lucide-react-native";
+import { Settings, MessageSquare, Info, ChevronRight, LayoutGrid, Plus } from "lucide-react-native";
+import { KakaoIcon, AppleIcon } from "@/components/SocialIcons";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
 import { DemoBanner } from "@/components/DemoBanner";
 import { FeedbackModal } from "@/components/FeedbackModal";
+import { SHORTCUT_SLOTS } from "@/modules/featureModules";
+import { MODULE_CATALOG, MODULE_CATALOG_MAP } from "@/modules/moduleCatalog";
+import { useFeatureModules } from "@/contexts/FeatureModulesContext";
 
 interface MenuItemProps {
     icon: React.ReactNode;
     label: string;
     onPress: () => void;
+}
+
+interface ModuleTileItem {
+    key: string;
+    label: string;
+    icon: ComponentType<{ color: string; size?: number }>;
+    onPress: () => void;
+    status: 'active' | 'comingSoon' | 'more';
 }
 
 function MenuItem({ icon, label, onPress }: MenuItemProps) {
@@ -31,7 +43,8 @@ function MenuItem({ icon, label, onPress }: MenuItemProps) {
 export default function ProfileScreen() {
     useScreenTracking('screen_profile');
 
-    const { user, signOut, signInWithKakao, isKakaoAvailable, isDemoMode, exitDemoMode } = useAuth();
+    const { user, signOut, signInWithKakao, signInWithApple, isKakaoAvailable, isAppleAvailable, isDemoMode, exitDemoMode } = useAuth();
+    const { shortcuts, recentModules } = useFeatureModules();
     const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
     const [userPhone, setUserPhone] = useState<string | null>(null);
 
@@ -75,115 +88,219 @@ export default function ProfileScreen() {
 
 
 
+    const isLoggedIn = !isDemoMode && user;
+    const showComingSoon = () => showAlert('준비중', '아직 준비중인 기능입니다.');
+
+    const moduleTiles = useMemo<ModuleTileItem[]>(() => {
+        const shortcutKeys = SHORTCUT_SLOTS.map((slot) => shortcuts[slot]);
+        const prioritizedKeys = [...shortcutKeys, ...recentModules, ...MODULE_CATALOG.map((item) => item.key)];
+        const deduped: string[] = [];
+
+        prioritizedKeys.forEach((key) => {
+            if (!MODULE_CATALOG_MAP[key]) return;
+            if (deduped.includes(key)) return;
+            deduped.push(key);
+        });
+
+        const topNine = deduped.slice(0, 9).map((key) => {
+            const item = MODULE_CATALOG_MAP[key];
+            return {
+                key: item.key,
+                label: item.title,
+                icon: item.icon,
+                onPress: item.status === 'comingSoon' || !item.moduleId
+                    ? showComingSoon
+                    : () => router.push(`/module/${item.moduleId}`),
+                status: item.status === 'comingSoon' ? 'comingSoon' : 'active',
+            } satisfies ModuleTileItem;
+        });
+
+        return [
+            ...topNine,
+            {
+                key: 'feature-more',
+                label: '더보기',
+                icon: Plus,
+                onPress: () => router.push('/feature-modules-all'),
+                status: 'more',
+            },
+        ];
+    }, [shortcuts, recentModules]);
+
     return (
         <SafeAreaView style={styles.container}>
             <DemoBanner />
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-                {/* 앱 브랜딩 섹션 */}
-                <View style={styles.brandSection}>
-                    <View style={styles.brandHeader}>
-                        <Image
-                            source={require('../../../assets/sparkle-icon.png')}
-                            style={styles.brandIcon}
-                        />
-                        <Text style={styles.brandName}>Polaris</Text>
-                    </View>
-                    {isDemoMode ? (
-                        <>
-                            <View style={styles.demoModeIndicator}>
-                                <Sparkles size={14} color={Colors.accent} />
-                                <Text style={styles.demoModeText}>체험 모드</Text>
-                            </View>
-                            <Text style={styles.brandSlogan}>회원가입하면 데이터가 저장돼요</Text>
-                        </>
-                    ) : (
-                        <Text style={styles.brandSlogan}>당신의 목표를 향한 나침반</Text>
-                    )}
-                    <TouchableOpacity
-                        style={[
-                            styles.kakaoButton,
-                            isDemoMode && styles.signupButton,
-                            (!isDemoMode && !user && !isKakaoAvailable) && styles.loginButton,
-                        ]}
-                        onPress={handleAuthAction}
-                    >
-                        {!isDemoMode && user === null && isKakaoAvailable && <View style={styles.kakaoIcon} />}
-                        <Text style={[
-                            styles.kakaoButtonText,
-                            (!isDemoMode && !user && !isKakaoAvailable) && styles.loginButtonText,
-                        ]}>
-                            {isDemoMode
-                                ? '무료로 시작하기'
-                                : user
-                                    ? '로그아웃'
-                                    : isKakaoAvailable
-                                        ? '카카오로 회원가입 / 로그인'
-                                        : '로그인'}
+
+            {/* 비로그인 상태: 로그인 버튼들 (가운데 정렬) */}
+            {!isLoggedIn && (
+                <View style={styles.notLoggedInContainer}>
+                    <View style={styles.notLoggedInContent}>
+                        <View style={styles.brandHeader}>
+                            <Image
+                                source={require('../../../assets/sparkle-icon.png')}
+                                style={styles.brandIcon}
+                            />
+                            <Text style={styles.brandName}>Polaris</Text>
+                        </View>
+                        <Text style={styles.notLoggedInSlogan}>당신의 목표를 향한 나침반</Text>
+                        <Text style={styles.notLoggedInDescription}>
+                            로그인하고 목표를 관리해보세요
                         </Text>
-                    </TouchableOpacity>
-                    {isDemoMode && (
+
+                        {/* 카카오로 시작하기 */}
+                        {isKakaoAvailable && (
+                            <TouchableOpacity
+                                style={styles.kakaoButtonLarge}
+                                onPress={async () => {
+                                    const { error } = await signInWithKakao();
+                                    if (error && error.message !== '로그인이 취소되었습니다.') {
+                                        showAlert('카카오 로그인 실패', error.message);
+                                    }
+                                }}
+                            >
+                                <KakaoIcon size={18} color="#191919" />
+                                <Text style={styles.kakaoButtonLargeText}>카카오로 시작하기</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        {/* Apple로 시작하기 (iOS만) */}
+                        {isAppleAvailable && (
+                            <TouchableOpacity
+                                style={styles.appleButtonLarge}
+                                onPress={async () => {
+                                    const { error } = await signInWithApple();
+                                    if (error && error.message !== '로그인이 취소되었습니다.') {
+                                        showAlert('Apple 로그인 실패', error.message);
+                                    }
+                                }}
+                            >
+                                <AppleIcon size={18} color="#FFFFFF" />
+                                <Text style={styles.appleButtonLargeText}>Apple로 시작하기</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        {/* 이메일로 시작하기 */}
                         <TouchableOpacity
-                            style={styles.secondaryButton}
+                            style={styles.emailButtonLarge}
+                            onPress={() => {
+                                exitDemoMode();
+                                router.push('/(auth)/signup');
+                            }}
+                        >
+                            <Text style={styles.emailButtonLargeText}>이메일로 시작하기</Text>
+                        </TouchableOpacity>
+
+                        {/* 로그인 */}
+                        <TouchableOpacity
+                            style={styles.loginLinkButton}
                             onPress={() => {
                                 exitDemoMode();
                                 router.push('/(auth)/login');
                             }}
                         >
-                            <Text style={styles.secondaryButtonText}>이미 계정이 있으신가요? 로그인</Text>
+                            <Text style={styles.loginLinkText}>이미 계정이 있으신가요? 로그인</Text>
                         </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* 디버그 섹션 (테스트용) */}
-                {user && !isDemoMode && (
-                    <View style={styles.debugSection}>
-                        <Text style={styles.debugTitle}>로그인 정보 (테스트용)</Text>
-                        <Text style={styles.debugText}>이메일: {user.email}</Text>
-                        <Text style={styles.debugText}>
-                            로그인 방식: {user.user_metadata?.kakao_id ? '카카오' : user.user_metadata?.apple_user_id ? 'Apple' : '이메일'}
-                        </Text>
-                        {user.user_metadata?.kakao_id && (
-                            <Text style={styles.debugText}>카카오 ID: {user.user_metadata.kakao_id}</Text>
-                        )}
-                        <Text style={styles.debugText}>이름: {user.user_metadata?.name || '없음'}</Text>
-                        <Text style={styles.debugText}>User ID: {user.id.substring(0, 8)}...</Text>
                     </View>
-                )}
-
-                {/* 메뉴 섹션 */}
-                <View style={styles.menuSection}>
-                    <MenuItem
-                        icon={<Settings size={20} color={Colors.textMuted} />}
-                        label="설정"
-                        onPress={() => router.push('/settings')}
-                    />
-                    <MenuItem
-                        icon={<Bell size={20} color={Colors.textMuted} />}
-                        label="알림"
-                        onPress={() => showAlert('준비중', '알림 기능은 준비중입니다.')}
-                    />
-                    <MenuItem
-                        icon={<MessageSquare size={20} color={Colors.textMuted} />}
-                        label="의견 보내기"
-                        onPress={() => setFeedbackModalVisible(true)}
-                    />
-                    <MenuItem
-                        icon={<Info size={20} color={Colors.textMuted} />}
-                        label="이용약관 및 개인정보처리방침"
-                        onPress={() => Linking.openURL('https://www.notion.so/neolee/Polaris-2f86e247b03580499a70fb4edff6382d')}
-                    />
+                    <View style={styles.footerSection}>
+                        <Text style={styles.footerText}>
+                            Polaris(폴라리스) | 사업자명 : 더포지인더스트리(The Forge Industries)
+                        </Text>
+                        <Text style={styles.footerText}>
+                            사업자등록번호 : 241-25-02034 | 통신판매업신고번호 : 제 2024-서울송파-1849호
+                        </Text>
+                    </View>
                 </View>
+            )}
 
-                {/* 사업자 정보 푸터 */}
-                <View style={styles.footerSection}>
-                    <Text style={styles.footerText}>
-                        Polaris(폴라리스) | 사업자명 : 더포지인더스트리(The Forge Industries)
-                    </Text>
-                    <Text style={styles.footerText}>
-                        사업자등록번호 : 241-25-02034 | 통신판매업신고번호 : 제 2024-서울송파-1849호
-                    </Text>
-                </View>
-            </ScrollView>
+            {/* 로그인 상태: 기존 UI */}
+            {isLoggedIn && (
+                <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+                    {/* 앱 브랜딩 섹션 */}
+                    <View style={styles.brandSection}>
+                        <View style={styles.brandHeader}>
+                            <Image
+                                source={require('../../../assets/sparkle-icon.png')}
+                                style={styles.brandIcon}
+                            />
+                            <Text style={styles.brandName}>Polaris</Text>
+                        </View>
+                        <Text style={styles.brandSlogan}>당신의 목표를 향한 나침반</Text>
+                        <TouchableOpacity
+                            style={styles.logoutButton}
+                            onPress={() => signOut()}
+                        >
+                            <Text style={styles.logoutButtonText}>로그아웃</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* 기능 모듈 섹션 */}
+                    <View style={styles.menuGroup}>
+                        <Text style={styles.menuGroupTitle}>기능 모듈</Text>
+                        <View style={styles.moduleGrid}>
+                            {moduleTiles.map((tile) => {
+                                const Icon = tile.icon;
+                                const isComingSoon = tile.status === 'comingSoon';
+                                const isMore = tile.status === 'more';
+                                const iconColor = isComingSoon ? Colors.textMuted : isMore ? Colors.textSecondary : Colors.accent;
+                                return (
+                                    <Pressable
+                                        key={tile.key}
+                                        style={[styles.moduleTile, isComingSoon && styles.moduleTileComingSoon]}
+                                        onPress={tile.onPress}
+                                    >
+                                        <View style={[styles.moduleTileIconWrap, isComingSoon && styles.moduleTileIconWrapComingSoon]}>
+                                            <Icon size={20} color={iconColor} />
+                                        </View>
+                                        <Text
+                                            style={[styles.moduleTileTitle, isComingSoon && styles.moduleTileTitleComingSoon]}
+                                            numberOfLines={2}
+                                        >
+                                            {tile.label}
+                                        </Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    </View>
+
+                    {/* 앱 섹션 */}
+                    <View style={styles.menuGroup}>
+                        <Text style={styles.menuGroupTitle}>앱</Text>
+                        <View style={styles.menuSection}>
+                            <MenuItem
+                                icon={<LayoutGrid size={20} color={Colors.textMuted} />}
+                                label="바로가기 관리"
+                                onPress={() => router.push('/shortcut-manager')}
+                            />
+                            <MenuItem
+                                icon={<Settings size={20} color={Colors.textMuted} />}
+                                label="설정"
+                                onPress={() => router.push('/settings')}
+                            />
+                            <MenuItem
+                                icon={<MessageSquare size={20} color={Colors.textMuted} />}
+                                label="의견 보내기"
+                                onPress={() => setFeedbackModalVisible(true)}
+                            />
+                            <MenuItem
+                                icon={<Info size={20} color={Colors.textMuted} />}
+                                label="이용약관 및 개인정보처리방침"
+                                onPress={() => Linking.openURL('https://www.notion.so/neolee/Polaris-2f86e247b03580499a70fb4edff6382d')}
+                            />
+                        </View>
+                    </View>
+
+                    {/* 사업자 정보 푸터 */}
+                    <View style={styles.footerSection}>
+                        <Text style={styles.footerText}>
+                            Polaris(폴라리스) | 사업자명 : 더포지인더스트리(The Forge Industries)
+                        </Text>
+                        <Text style={styles.footerText}>
+                            사업자등록번호 : 241-25-02034 | 통신판매업신고번호 : 제 2024-서울송파-1849호
+                        </Text>
+                    </View>
+                </ScrollView>
+            )}
 
             <FeedbackModal
                 visible={feedbackModalVisible}
@@ -249,12 +366,6 @@ const styles = StyleSheet.create({
         gap: Spacing.md,
         width: '100%',
     },
-    kakaoIcon: {
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: Colors.kakaoBrown,
-    },
     kakaoButtonText: {
         fontSize: FontSizes.base,
         fontWeight: '600',
@@ -292,6 +403,15 @@ const styles = StyleSheet.create({
         color: Colors.accent,
     },
     // 메뉴 섹션
+    menuGroup: {
+        gap: Spacing.md,
+    },
+    menuGroupTitle: {
+        fontSize: FontSizes.sm,
+        color: Colors.textMuted,
+        fontWeight: '600',
+        paddingHorizontal: Spacing.sm,
+    },
     menuSection: {
         backgroundColor: Colors.bgSecondary,
         borderRadius: BorderRadius['2xl'],
@@ -314,6 +434,49 @@ const styles = StyleSheet.create({
     menuItemLabel: {
         fontSize: FontSizes.base,
         color: Colors.textPrimary,
+    },
+    moduleGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        rowGap: Spacing.sm,
+    },
+    moduleTile: {
+        width: '18.8%',
+        aspectRatio: 0.95,
+        backgroundColor: Colors.bgSecondary,
+        borderRadius: BorderRadius['2xl'],
+        borderWidth: 1,
+        borderColor: Colors.borderSecondary,
+        paddingVertical: Spacing.xs,
+        paddingHorizontal: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.xs,
+    },
+    moduleTileComingSoon: {
+        backgroundColor: Colors.bgCard,
+        borderColor: Colors.bgMuted,
+    },
+    moduleTileIconWrap: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: Colors.bgCard,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    moduleTileIconWrapComingSoon: {
+        backgroundColor: Colors.bgMuted,
+    },
+    moduleTileTitle: {
+        fontSize: FontSizes.sm,
+        color: Colors.textPrimary,
+        fontWeight: '600',
+        textAlign: 'center',
+    },
+    moduleTileTitleComingSoon: {
+        color: Colors.textMuted,
     },
     // 디버그 섹션
     debugSection: {
@@ -347,5 +510,100 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 18,
     },
-
+    // 비로그인 상태 스타일
+    notLoggedInContainer: {
+        flex: 1,
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: Spacing['3xl'],
+        paddingVertical: Spacing['4xl'],
+    },
+    notLoggedInContent: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: 300,
+    },
+    notLoggedInSlogan: {
+        fontSize: FontSizes.lg,
+        color: Colors.textSecondary,
+        marginTop: Spacing.lg,
+        marginBottom: Spacing.sm,
+    },
+    notLoggedInDescription: {
+        fontSize: FontSizes.base,
+        color: Colors.textMuted,
+        textAlign: 'center',
+        marginBottom: Spacing['3xl'],
+    },
+    kakaoButtonLarge: {
+        width: '100%',
+        flexDirection: 'row',
+        backgroundColor: Colors.kakaoYellow,
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing['2xl'],
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: Spacing.lg,
+        gap: Spacing.md,
+    },
+    kakaoButtonLargeText: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: Colors.kakaoBrown,
+    },
+    appleButtonLarge: {
+        width: '100%',
+        flexDirection: 'row',
+        backgroundColor: '#000000',
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing['2xl'],
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: Spacing.lg,
+        gap: Spacing.md,
+    },
+    appleButtonLargeText: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: '#FFFFFF',
+    },
+    emailButtonLarge: {
+        width: '100%',
+        backgroundColor: Colors.bgSecondary,
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing['2xl'],
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.borderSecondary,
+        marginBottom: Spacing.lg,
+    },
+    emailButtonLargeText: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: Colors.textPrimary,
+    },
+    loginLinkButton: {
+        paddingVertical: Spacing.lg,
+    },
+    loginLinkText: {
+        fontSize: FontSizes.sm,
+        color: Colors.textMuted,
+        textDecorationLine: 'underline',
+    },
+    logoutButton: {
+        backgroundColor: Colors.bgTertiary,
+        borderRadius: BorderRadius['4xl'],
+        paddingVertical: Spacing['2xl'],
+        paddingHorizontal: Spacing['4xl'],
+        marginTop: Spacing.lg,
+        width: '100%',
+        alignItems: 'center',
+    },
+    logoutButtonText: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+    },
 });
