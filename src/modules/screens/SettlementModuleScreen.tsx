@@ -17,7 +17,7 @@ import DateTimePicker, { type DateTimePickerEvent } from "@react-native-communit
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BarChart3, Calendar, Check, ChevronLeft, ChevronRight, ChevronsUpDown, ListChecks, Plus, Trash2, X } from "lucide-react-native";
 import { BorderRadius, Colors, FontSizes, Spacing } from "@/constants/theme";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
 import { FeatureModuleHeader } from "@/components/FeatureModuleHeader";
 import { useWebLayout } from "@/contexts/WebLayoutContext";
 import { useAnalytics } from "@/contexts/AnalyticsContext";
@@ -447,7 +447,7 @@ export function SettlementModuleScreen() {
   }, [yearlyActualByMonth]);
 
   const calendarViewTitle = useMemo(() => {
-    return `${selectedMonth.getFullYear()}년 ${selectedMonth.getMonth() + 1}월 스케쥴`;
+    return `${selectedMonth.getFullYear()}년 ${selectedMonth.getMonth() + 1}월 일정`;
   }, [selectedMonth]);
 
   const calendarEventsByDate = useMemo(() => {
@@ -1267,7 +1267,7 @@ export function SettlementModuleScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <DemoBanner />
+      <StatusBanners />
       <FeatureModuleHeader
         title="영상 발주 관리"
         rightAction={(

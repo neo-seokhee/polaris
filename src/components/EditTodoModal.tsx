@@ -64,7 +64,7 @@ export function EditTodoModal({
 
     const handleEdit = () => {
         if (!title.trim()) {
-            Alert.alert("오류", "할일 내용을 입력해주세요.");
+            Alert.alert("잠깐", "할일 내용을 입력해주세요.");
             return;
         }
         onEdit(todoId, title.trim(), memo.trim() ? memo.trim() : null);
@@ -76,7 +76,7 @@ export function EditTodoModal({
 
     const handleDelete = () => {
         if (Platform.OS === 'web') {
-            const confirmed = window.confirm("이 할일을 삭제하시겠습니까?");
+            const confirmed = window.confirm("이 할일을 삭제할까요?");
             if (confirmed) {
                 onDelete(todoId);
                 onClose();
@@ -84,7 +84,7 @@ export function EditTodoModal({
         } else {
             Alert.alert(
                 "할일 삭제",
-                "이 할일을 삭제하시겠습니까?",
+                "이 할일을 삭제할까요?",
                 [
                     { text: "취소", style: "cancel" },
                     {
@@ -126,11 +126,11 @@ export function EditTodoModal({
         const confirmDelete = () => {
             return new Promise<boolean>((resolve) => {
                 if (Platform.OS === 'web') {
-                    resolve(window.confirm(`"${categoryName}" 카테고리를 삭제하시겠습니까?\n이 카테고리의 모든 할일은 '미지정'으로 이동됩니다.`));
+                    resolve(window.confirm(`"${categoryName}" 카테고리를 삭제할까요?\n이 카테고리의 모든 할일은 '미지정'으로 이동됩니다.`));
                 } else {
                     Alert.alert(
                         "카테고리 삭제",
-                        `"${categoryName}" 카테고리를 삭제하시겠습니까?\n이 카테고리의 모든 할일은 '미지정'으로 이동됩니다.`,
+                        `"${categoryName}" 카테고리를 삭제할까요?\n이 카테고리의 모든 할일은 '미지정'으로 이동됩니다.`,
                         [
                             { text: "취소", style: "cancel", onPress: () => resolve(false) },
                             { text: "삭제", style: "destructive", onPress: () => resolve(true) },

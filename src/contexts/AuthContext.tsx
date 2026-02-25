@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
@@ -17,6 +17,8 @@ import {
 } from '@/lib/appleAuth';
 import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics';
 import { notifySlack } from '@/lib/slackNotify';
+import { clearUserCache } from '@/lib/offlineCache';
+import { clearQueue } from '@/lib/syncQueue';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isDemoMode, setIsDemoMode] = useState(true);
     const [isAppleAvailable, setIsAppleAvailable] = useState(false);
     const isKakaoAvailable = isKakaoConfigured();
+    const kakaoLoginInProgress = useRef(false);
 
     // Check Apple Sign-In availability
     useEffect(() => {
@@ -84,15 +87,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                     const accessToken = searchParams.get('access_token');
                     const refreshToken = searchParams.get('refresh_token');
+                    const code = searchParams.get('code');
                     const error = searchParams.get('error');
 
-                    console.log('[DeepLink] Auth callback detected, tokens present:', !!accessToken, !!refreshToken, 'error:', error);
+                    console.log('[DeepLink] Auth callback detected, tokens present:', !!accessToken, !!refreshToken, 'code:', !!code, 'error:', error);
 
                     if (error) {
                         console.log('[DeepLink] Auth callback returned error:', error);
                         return;
                     }
 
+                    // Case 1: 토큰이 있으면 세션 설정 (기존 로직)
                     if (accessToken && refreshToken) {
                         const { data, error: sessionError } = await supabase.auth.setSession({
                             access_token: accessToken,
@@ -105,6 +110,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             console.log('[DeepLink] Session restored for user:', data.user.id);
                             trackEvent('user_signed_in', { auth_method: 'deep_link' });
                             identifyUser(data.user.id, { email: data.user.email });
+                        }
+                        return;
+                    }
+
+                    // Case 2: code가 있으면 토큰 교환 후 로그인 (Android deep link 대응)
+                    // Android에서 Chrome Custom Tab이 polaris:// 스킴을 openAuthSessionAsync로
+                    // 반환하지 않고 Intent(deep link)로 처리할 수 있음
+                    if (code && isKakaoAvailable) {
+                        // signInWithKakao가 이미 code를 처리 중이면 건너뜀
+                        if (kakaoLoginInProgress.current) {
+                            console.log('[DeepLink] Kakao login already in progress, skipping code processing');
+                            return;
+                        }
+
+                        console.log('[DeepLink] Processing Kakao auth code from deep link...');
+                        kakaoLoginInProgress.current = true;
+                        try {
+                            const { error: kakaoError } = await processKakaoAuthCode(code);
+                            if (kakaoError) {
+                                console.log('[DeepLink] Kakao auth code processing failed:', kakaoError.message || kakaoError);
+                            }
+                        } finally {
+                            kakaoLoginInProgress.current = false;
                         }
                     }
                 }
@@ -210,6 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
+        const userId = user?.id;
         trackEvent('user_signed_out');
         resetAnalytics();
         try {
@@ -218,6 +247,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (error) {
             // 에러가 발생해도 로컬 상태는 정리
             console.log('[SignOut] Error during sign out:', error);
+        }
+        // 오프라인 캐시 및 동기화 큐 정리
+        if (userId) {
+            clearUserCache(userId).catch(() => {});
+            clearQueue(userId).catch(() => {});
         }
         // 로컬 상태 직접 정리
         setSession(null);
@@ -230,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!user) {
             console.log('[DeleteAccount] ERROR - No user found');
-            return { error: new Error('로그인이 필요합니다.') };
+            return { error: new Error('먼저 로그인해주세요.') };
         }
 
         try {
@@ -245,7 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (!sessionData.session) {
                 console.log('[DeleteAccount] ERROR - No session found');
-                return { error: new Error('세션이 만료되었습니다.') };
+                return { error: new Error('세션이 만료됐어요. 다시 로그인해주세요.') };
             }
 
             console.log('[DeleteAccount] Calling Edge Function delete-account...');
@@ -281,7 +315,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (!response.ok) {
                 console.log('[DeleteAccount] Edge Function failed with status:', response.status);
-                return { error: new Error('계정 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.') };
+                return { error: new Error('계정 삭제가 안 됐어요. 잠시 후 다시 시도해주세요.') };
             }
 
             let data;
@@ -293,7 +327,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (data?.error) {
                 console.log('[DeleteAccount] Edge Function returned error:', data.error);
-                return { error: new Error('계정 삭제에 실패했습니다.') };
+                return { error: new Error('계정 삭제가 안 됐어요.') };
             }
 
             console.log('[DeleteAccount] Account deleted successfully');
@@ -305,6 +339,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Clear local session
             console.log('[DeleteAccount] Cleaning up local session...');
             resetAnalytics();
+            // 오프라인 캐시 및 동기화 큐 정리
+            clearUserCache(userId).catch(() => {});
+            clearQueue(userId).catch(() => {});
             await supabase.auth.signOut({ scope: 'local' });
             setSession(null);
             setUser(null);
@@ -316,13 +353,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('[DeleteAccount] CATCH - Unexpected error:', error);
             console.log('[DeleteAccount] Error type:', typeof error);
             console.log('[DeleteAccount] Error details:', JSON.stringify(error));
-            return { error: new Error('계정 삭제 중 오류가 발생했습니다.') };
+            return { error: new Error('계정 삭제 중 문제가 생겼어요.') };
         }
     };
 
     const signInWithAppleAuth = async (): Promise<{ error: any }> => {
         if (!isAppleAvailable) {
-            return { error: new Error('Apple 로그인을 사용할 수 없습니다.') };
+            return { error: new Error('Apple 로그인을 쓸 수 없어요.') };
         }
 
         try {
@@ -331,7 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('[Apple Auth] Got credential, identityToken:', !!credential.identityToken);
 
             if (!credential.identityToken) {
-                return { error: new Error('Apple 인증에 실패했습니다.') };
+                return { error: new Error('Apple 인증이 안 됐어요.') };
             }
 
             // Apple ID Token으로 Supabase 인증
@@ -351,7 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.log('[Apple Auth] Fallback: email available:', !!email);
 
                 if (!email) {
-                    return { error: new Error(`Apple 로그인 실패: ${error.message}`) };
+                    return { error: new Error(`Apple 로그인이 안 됐어요: ${error.message}`) };
                 }
 
                 const name = credential.fullName
@@ -417,20 +454,126 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('[Apple Auth] Exception caught:', error.code, error.message);
             // Handle specific Apple error codes
             if (error.code === 'ERR_REQUEST_CANCELED') {
-                return { error: new Error('로그인이 취소되었습니다.') };
+                return { error: new Error('로그인이 취소됐어요.') };
             }
             if (error.code === 'ERR_APPLE_AUTHENTICATION_REQUEST_FAILED') {
                 console.log('[Apple Auth] Request failed details:', JSON.stringify(error));
-                return { error: new Error('Apple 로그인 요청이 실패했습니다. 설정을 확인해주세요.') };
+                return { error: new Error('Apple 로그인 요청이 안 됐어요. 설정을 확인해주세요.') };
             }
 
             return { error };
         }
     };
 
+    // 카카오 인증 코드를 받아 토큰 교환 → 사용자 정보 조회 → Supabase 로그인/가입 수행
+    const processKakaoAuthCode = async (code: string): Promise<{ error: any }> => {
+        console.log('[Kakao Auth] Processing auth code...');
+
+        const tokens = await exchangeKakaoCodeForTokens(code, kakaoConfig.redirectUri);
+        console.log('[Kakao Auth] Got tokens, fetching user info...');
+
+        const kakaoUser = await getKakaoUserInfo(tokens.access_token);
+        console.log('[Kakao Auth] Full kakao_account:', JSON.stringify(kakaoUser.kakao_account));
+
+        notifySlack('kakao_debug', {
+            email: kakaoUser.kakao_account?.email || 'no email',
+            phone: kakaoUser.kakao_account?.phone_number || 'no phone_number in response',
+            name: kakaoUser.kakao_account?.profile?.nickname || 'no nickname',
+        }, `Platform: ${Platform.OS}\nScopes: ${kakaoConfig.scopes.join(',')}\nkakao_account keys: ${Object.keys(kakaoUser.kakao_account || {}).join(', ')}`);
+
+        const email = kakaoUser.kakao_account?.email;
+        const phone = formatKakaoPhoneNumber(kakaoUser.kakao_account?.phone_number);
+        console.log('[Kakao Auth] Phone from Kakao:', kakaoUser.kakao_account?.phone_number, '→', phone);
+        if (!email) {
+            return { error: new Error('이메일 정보를 가져올 수 없어요. 카카오 계정에 이메일이 등록돼 있는지 확인해주세요.') };
+        }
+
+        // Supabase 로그인 시도
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password: `kakao_${kakaoUser.id}`,
+        });
+
+        if (signInError) {
+            console.log('[Kakao Auth] Sign in failed, attempting sign up...');
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                email,
+                password: `kakao_${kakaoUser.id}`,
+                options: {
+                    data: {
+                        name: kakaoUser.kakao_account?.profile?.nickname || email.split('@')[0],
+                        kakao_id: kakaoUser.id.toString(),
+                        phone,
+                    },
+                },
+            });
+
+            if (signUpError) {
+                console.log('[Kakao Auth] Sign up error:', signUpError.message);
+                return { error: signUpError };
+            }
+
+            if (signUpData.user && !signUpData.session) {
+                console.log('[Kakao Auth] Signup succeeded but no session, attempting sign in...');
+                const { error: postSignUpError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password: `kakao_${kakaoUser.id}`,
+                });
+                if (postSignUpError) {
+                    console.log('[Kakao Auth] Post-signup sign in failed:', postSignUpError.message);
+                    return { error: postSignUpError };
+                }
+            }
+
+            if (signUpData.user) {
+                console.log('[Kakao Auth] Sign up successful');
+
+                if (phone) {
+                    const savePhone = async (retries = 3) => {
+                        for (let i = 0; i < retries; i++) {
+                            await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+                            const { error: updateError } = await supabase
+                                .from('users')
+                                .update({ phone })
+                                .eq('id', signUpData.user!.id);
+                            if (!updateError) {
+                                console.log('[Kakao Auth] Phone saved successfully');
+                                return;
+                            }
+                            console.log(`[Kakao Auth] Phone save attempt ${i + 1} failed:`, updateError.message);
+                        }
+                    };
+                    await savePhone();
+                }
+
+                trackEvent('user_signed_up', { auth_method: 'kakao' });
+                identifyUser(signUpData.user.id, { email, name: kakaoUser.kakao_account?.profile?.nickname, phone });
+                notifySlack('user_signed_up', { email, phone, name: kakaoUser.kakao_account?.profile?.nickname, auth_method: 'kakao' });
+            }
+        } else {
+            console.log('[Kakao Auth] Sign in successful');
+
+            if (phone) {
+                const { data: { user: currentUser } } = await supabase.auth.getUser();
+                if (currentUser) {
+                    const { error: phoneError } = await supabase
+                        .from('users')
+                        .update({ phone })
+                        .eq('id', currentUser.id);
+                    if (phoneError) console.log('[Kakao Auth] Phone update failed:', phoneError.message);
+                    else console.log('[Kakao Auth] Phone updated for existing user');
+                }
+            }
+
+            trackEvent('user_signed_in', { auth_method: 'kakao' });
+        }
+
+        return { error: null };
+    };
+
     const signInWithKakao = async (): Promise<{ error: any }> => {
         if (!isKakaoAvailable) {
-            return { error: new Error('카카오 로그인이 설정되지 않았습니다.') };
+            return { error: new Error('카카오 로그인을 쓸 수 없어요.') };
         }
 
         try {
@@ -467,9 +610,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (result.type !== 'success' || !result.url) {
                 if (result.type === 'cancel') {
-                    return { error: new Error('로그인이 취소되었습니다.') };
+                    return { error: new Error('로그인이 취소됐어요.') };
                 }
-                return { error: new Error('카카오 인증에 실패했습니다.') };
+                return { error: new Error('카카오 인증이 안 됐어요.') };
             }
 
             console.log('[Kakao Login] Got result URL:', result.url);
@@ -506,123 +649,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // 웹 콜백에서 에러가 발생했거나 토큰/코드가 없는 경우
                 const errorMsg = url.searchParams.get('error_description')
                     || url.searchParams.get('error')
-                    || '카카오 로그인 처리 중 오류가 발생했습니다.';
+                    || '카카오 로그인 처리 중 문제가 생겼어요.';
                 console.log('[Kakao Login] No code or tokens found in URL:', result.url);
                 return { error: new Error(errorMsg) };
             }
 
-            console.log('[Kakao Login] Got auth code, exchanging for tokens...');
-
-            // 앱에서 직접 토큰 교환
-            const tokens = await exchangeKakaoCodeForTokens(code, kakaoConfig.redirectUri);
-            console.log('[Kakao Login] Got tokens, fetching user info...');
-
-            const kakaoUser = await getKakaoUserInfo(tokens.access_token);
-            console.log('[Kakao Login] Full kakao_account:', JSON.stringify(kakaoUser.kakao_account));
-            console.log('[Kakao Login] Auth URL scopes:', kakaoConfig.scopes);
-
-            // 디버그: Slack으로 카카오 응답 전송
-            notifySlack('kakao_debug', {
-                email: kakaoUser.kakao_account?.email || 'no email',
-                phone: kakaoUser.kakao_account?.phone_number || 'no phone_number in response',
-                name: kakaoUser.kakao_account?.profile?.nickname || 'no nickname',
-            }, `Platform: ${Platform.OS}\nScopes: ${kakaoConfig.scopes.join(',')}\nkakao_account keys: ${Object.keys(kakaoUser.kakao_account || {}).join(', ')}`);
-
-            const email = kakaoUser.kakao_account?.email;
-            const phone = formatKakaoPhoneNumber(kakaoUser.kakao_account?.phone_number);
-            console.log('[Kakao Login] Phone from Kakao:', kakaoUser.kakao_account?.phone_number, '→', phone);
-            if (!email) {
-                return { error: new Error('이메일 정보를 가져올 수 없습니다. 카카오 계정에 이메일이 등록되어 있는지 확인해주세요.') };
+            console.log('[Kakao Login] Got auth code, processing via helper...');
+            kakaoLoginInProgress.current = true;
+            try {
+                return await processKakaoAuthCode(code);
+            } finally {
+                kakaoLoginInProgress.current = false;
             }
-
-            // Supabase 로그인 시도
-            const { error: signInError } = await supabase.auth.signInWithPassword({
-                email,
-                password: `kakao_${kakaoUser.id}`,
-            });
-
-            if (signInError) {
-                console.log('[Kakao Login] Sign in failed, attempting sign up...');
-                // 신규 회원가입
-                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                    email,
-                    password: `kakao_${kakaoUser.id}`,
-                    options: {
-                        data: {
-                            name: kakaoUser.kakao_account?.profile?.nickname || email.split('@')[0],
-                            kakao_id: kakaoUser.id.toString(),
-                            phone,
-                        },
-                    },
-                });
-
-                if (signUpError) {
-                    console.log('[Kakao Login] Sign up error:', signUpError.message);
-                    return { error: signUpError };
-                }
-
-                // If signup succeeded but no session (email confirmation required), sign in
-                if (signUpData.user && !signUpData.session) {
-                    console.log('[Kakao Login] Signup succeeded but no session, attempting sign in...');
-                    const { error: postSignUpError } = await supabase.auth.signInWithPassword({
-                        email,
-                        password: `kakao_${kakaoUser.id}`,
-                    });
-                    if (postSignUpError) {
-                        console.log('[Kakao Login] Post-signup sign in failed:', postSignUpError.message);
-                        return { error: postSignUpError };
-                    }
-                }
-
-                if (signUpData.user) {
-                    console.log('[Kakao Login] Sign up successful');
-
-                    // public.users 테이블에 phone 저장
-                    if (phone) {
-                        const savePhone = async (retries = 3) => {
-                            for (let i = 0; i < retries; i++) {
-                                await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
-                                const { error: updateError } = await supabase
-                                    .from('users')
-                                    .update({ phone })
-                                    .eq('id', signUpData.user!.id);
-                                if (!updateError) {
-                                    console.log('[Kakao Login] Phone saved successfully');
-                                    return;
-                                }
-                                console.log(`[Kakao Login] Phone save attempt ${i + 1} failed:`, updateError.message);
-                            }
-                        };
-                        await savePhone();
-                    }
-
-                    trackEvent('user_signed_up', { auth_method: 'kakao' });
-                    identifyUser(signUpData.user.id, { email, name: kakaoUser.kakao_account?.profile?.nickname, phone });
-                    notifySlack('user_signed_up', { email, phone, name: kakaoUser.kakao_account?.profile?.nickname, auth_method: 'kakao' });
-                }
-            } else {
-                console.log('[Kakao Login] Sign in successful');
-
-                // 기존 사용자도 전화번호가 없으면 업데이트
-                if (phone) {
-                    const { data: { user: currentUser } } = await supabase.auth.getUser();
-                    if (currentUser) {
-                        const { error: phoneError } = await supabase
-                            .from('users')
-                            .update({ phone })
-                            .eq('id', currentUser.id);
-                        if (phoneError) console.log('[Kakao Login] Phone update failed:', phoneError.message);
-                        else console.log('[Kakao Login] Phone updated for existing user');
-                    }
-                }
-
-                trackEvent('user_signed_in', { auth_method: 'kakao' });
-            }
-
-            return { error: null };
         } catch (error) {
             console.log('[Kakao Login] Error:', error);
             return { error };
+        } finally {
+            kakaoLoginInProgress.current = false;
         }
     };
 

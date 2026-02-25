@@ -6,6 +6,7 @@ expo-env.d.ts
 # @end expo-cli
 .vercel
 .env*.local
+dist/
 
 # Google Play Service Account Key
 google-play-service-account.json

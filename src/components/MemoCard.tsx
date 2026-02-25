@@ -94,8 +94,8 @@ export function MemoCard({
                         <div
                             style={{
                                 color: Colors.textContent,
-                                fontSize: 12,
-                                lineHeight: '18px',
+                                fontSize: 14,
+                                lineHeight: '22px',
                             }}
                             dangerouslySetInnerHTML={{ __html: content }}
                         />
@@ -108,8 +108,8 @@ export function MemoCard({
                             tagsStyles={{
                                 body: {
                                     color: Colors.textContent,
-                                    fontSize: 12,
-                                    lineHeight: 18,
+                                    fontSize: 14,
+                                    lineHeight: 22,
                                     margin: 0,
                                     padding: 0,
                                 },
@@ -162,8 +162,8 @@ export function MemoCard({
                                 },
                                 li: {
                                     marginVertical: 2,
-                                    fontSize: 12,
-                                    lineHeight: 18,
+                                    fontSize: 14,
+                                    lineHeight: 22,
                                     color: Colors.textContent,
                                 },
                             }}
@@ -235,10 +235,10 @@ const styles = StyleSheet.create({
         maxHeight: 54, // 약 3줄 (12px font, 18px line-height)
     },
     content: {
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: '400',
         color: Colors.textContent,
-        lineHeight: 18,
+        lineHeight: 22,
     },
     footer: {
         flexDirection: 'row',

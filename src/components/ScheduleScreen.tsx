@@ -8,14 +8,14 @@ const events = [
   {
     id: 1,
     title: "아침 회의",
-    time: "2:00 PM - 3:30 PM",
+    time: "오후 2:00 - 3:30",
     location: "7-3 회의실",
     color: "#FFD700",
   },
   {
     id: 2,
     title: "고객 미팅",
-    time: "2:00 PM - 3:30 PM",
+    time: "오후 2:00 - 3:30",
     location: "신논현 투썸플레이스",
     color: "#22C55E",
   },
@@ -32,7 +32,7 @@ export function ScheduleScreen() {
       </View>
       <View className="flex flex-col gap-3">
         <Text className="text-base font-semibold text-text-primary">
-          오늘의 스케쥴
+          오늘의 일정
         </Text>
         <View className="flex flex-col gap-2">
           {events.map((event) => (

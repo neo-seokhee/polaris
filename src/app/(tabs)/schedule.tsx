@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Pressable } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Settings, RefreshCw, Calendar, Plus, Sparkles } from "lucide-react-native";
+import { ScheduleSkeleton } from "@/components/Skeleton";
 import { router } from "expo-router";
 import { DateHeader } from "@/components/DateHeader";
 import { WeekDaySelector } from "@/components/WeekDaySelector";
@@ -9,7 +10,7 @@ import { EventCard } from "@/components/EventCard";
 import { GoogleCalendarSettingsModal } from "@/components/GoogleCalendarSettingsModal";
 import { AddEventModal } from "@/components/AddEventModal";
 import { EventDetailModal } from "@/components/EventDetailModal";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
 import { useGoogleCalendar, UnifiedEvent } from "@/hooks/useGoogleCalendar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemoNudge } from "@/contexts/DemoNudgeContext";
@@ -21,10 +22,10 @@ function formatEventTime(startTime: Date, endTime: Date): string {
     const formatTime = (date: Date) => {
         const hours = date.getHours();
         const minutes = date.getMinutes();
-        const period = hours >= 12 ? 'PM' : 'AM';
+        const period = hours >= 12 ? '오후' : '오전';
         const displayHours = hours % 12 || 12;
         const displayMinutes = minutes.toString().padStart(2, '0');
-        return `${displayHours}:${displayMinutes} ${period}`;
+        return `${period} ${displayHours}:${displayMinutes}`;
     };
 
     return `${formatTime(startTime)} - ${formatTime(endTime)}`;
@@ -121,15 +122,15 @@ export default function ScheduleScreen() {
     }, [selectedDate]);
 
     const getSectionTitle = () => {
-        if (isToday) return '오늘의 스케쥴';
+        if (isToday) return '오늘의 일정';
         const month = selectedDate.getMonth() + 1;
         const day = selectedDate.getDate();
-        return `${month}월 ${day}일 스케쥴`;
+        return `${month}월 ${day}일 일정`;
     };
 
     return (
         <SafeAreaView style={styles.container}>
-            <DemoBanner />
+            <StatusBanners />
             <View style={styles.fixedHeader}>
                 <View style={styles.headerRow}>
                     <View style={styles.dateHeaderWrapper}>
@@ -180,30 +181,43 @@ export default function ScheduleScreen() {
                         >
                             <Sparkles size={14} color={Colors.accent} />
                             <Text style={styles.demoNudgeText}>
-                                Google Calendar를 연동하면 이렇게 보여요!
+                                내 캘린더를 연결하면 여기에 일정이 보여요
                             </Text>
                         </Pressable>
                     )}
 
                     {isLoading && !isDemoMode ? (
-                        <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="large" color={Colors.accent} />
-                        </View>
+                        <ScheduleSkeleton />
                     ) : !isConnected && !isDemoMode ? (
-                        <View style={styles.emptyContainer}>
-                            <Calendar size={48} color={Colors.textMuted} />
-                            <Text style={styles.emptyText}>Google Calendar에 연결하세요</Text>
-                            <TouchableOpacity
-                                style={styles.connectButton}
-                                onPress={() => setShowSettingsModal(true)}
-                            >
-                                <Text style={styles.connectButtonText}>연결하기</Text>
-                            </TouchableOpacity>
+                        <View style={styles.sampleContainer}>
+                            {/* Sample events to show value */}
+                            <View style={[styles.sampleEvent, { borderLeftColor: Colors.accent }]}>
+                                <Text style={styles.sampleEventTime}>오전 9:00</Text>
+                                <Text style={styles.sampleEventTitle}>아침 미팅</Text>
+                            </View>
+                            <View style={[styles.sampleEvent, { borderLeftColor: Colors.success }]}>
+                                <Text style={styles.sampleEventTime}>오후 2:00</Text>
+                                <Text style={styles.sampleEventTitle}>프로젝트 리뷰</Text>
+                            </View>
+                            <View style={[styles.sampleEvent, { borderLeftColor: Colors.info }]}>
+                                <Text style={styles.sampleEventTime}>오후 5:30</Text>
+                                <Text style={styles.sampleEventTitle}>팀 회식</Text>
+                            </View>
+                            {/* Overlay prompt */}
+                            <View style={styles.sampleOverlay}>
+                                <Text style={styles.sampleOverlayText}>내 캘린더를 연결하면{'\n'}여기에 실제 일정이 보여요</Text>
+                                <TouchableOpacity
+                                    style={styles.connectButton}
+                                    onPress={() => setShowSettingsModal(true)}
+                                >
+                                    <Text style={styles.connectButtonText}>Google Calendar 연결하기</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     ) : eventsForSelectedDate.length === 0 ? (
                         <View style={styles.emptyContainer}>
                             <Calendar size={48} color={Colors.textMuted} />
-                            <Text style={styles.emptyText}>일정이 없습니다</Text>
+                            <Text style={styles.emptyText}>오늘은 여유로운 하루예요</Text>
                         </View>
                     ) : (
                         <View style={styles.eventsList}>
@@ -302,7 +316,7 @@ const styles = StyleSheet.create({
         flexShrink: 0,
     },
     headerButton: {
-        padding: Spacing.md,
+        padding: Spacing.xl,
     },
     scrollView: {
         flex: 1,
@@ -354,6 +368,43 @@ const styles = StyleSheet.create({
     demoNudgeText: {
         fontSize: FontSizes.sm,
         color: Colors.textSecondary,
+    },
+    sampleContainer: {
+        position: 'relative',
+        gap: Spacing.md,
+    },
+    sampleEvent: {
+        backgroundColor: Colors.bgSecondary,
+        borderRadius: BorderRadius['2xl'],
+        padding: Spacing['2xl'],
+        borderLeftWidth: 3,
+        opacity: 0.4,
+    },
+    sampleEventTime: {
+        fontSize: FontSizes.sm,
+        color: Colors.textMuted,
+        marginBottom: Spacing.xs,
+    },
+    sampleEventTitle: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+    },
+    sampleOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    sampleOverlayText: {
+        fontSize: FontSizes.base,
+        color: Colors.textPrimary,
+        fontWeight: '600',
+        textAlign: 'center',
+        lineHeight: 22,
     },
     connectButton: {
         marginTop: Spacing.lg,

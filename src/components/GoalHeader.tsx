@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { Colors, FontSizes, Spacing, BorderRadius } from "@/constants/theme";
+import { Colors, FontSizes, Spacing } from "@/constants/theme";
 
 interface GoalHeaderProps {
   year: number;
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   arrowButton: {
-    padding: Spacing.xs,
+    padding: Spacing.lg,
   },
   yearText: {
     fontSize: FontSizes['3xl'],

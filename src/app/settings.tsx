@@ -219,7 +219,7 @@ export default function SettingsScreen() {
                         </Text>
                         <Text style={styles.modalDescription}>
                             계정을 삭제하면 모든 데이터(목표, 일정, 메모, 할 일)가 영구적으로 삭제됩니다.{'\n\n'}
-                            정말로 계정을 삭제하시겠습니까?
+                            정말로 계정을 삭제할까요?
                         </Text>
                         <View style={styles.modalButtons}>
                             <Pressable

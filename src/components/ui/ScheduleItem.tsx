@@ -1,6 +1,6 @@
 interface ScheduleItemProps {
   time: string;
-  period: "AM" | "PM";
+  period: "오전" | "오후";
   title: string;
   description?: string;
   color?: string;

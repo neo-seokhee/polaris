@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderPrimary,
     backgroundColor: Colors.bgSecondary,
     paddingHorizontal: Spacing['2xl'],
-    paddingVertical: Spacing['3xl'],
+    paddingVertical: Spacing['2xl'],
   },
   pressed: {
     opacity: 0.8,

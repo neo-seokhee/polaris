@@ -16,6 +16,7 @@ export interface Database {
                     name: string | null
                     phone: string | null
                     avatar_url: string | null
+                    role: 'user' | 'admin'
                     created_at: string
                     updated_at: string
                 }
@@ -25,6 +26,7 @@ export interface Database {
                     name?: string | null
                     phone?: string | null
                     avatar_url?: string | null
+                    role?: 'user' | 'admin'
                     created_at?: string
                     updated_at?: string
                 }
@@ -34,6 +36,7 @@ export interface Database {
                     name?: string | null
                     phone?: string | null
                     avatar_url?: string | null
+                    role?: 'user' | 'admin'
                     created_at?: string
                     updated_at?: string
                 }
@@ -486,6 +489,201 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                 }
+            }
+            plans: {
+                Row: {
+                    id: string
+                    name: string
+                    description: string | null
+                    price_krw: number
+                    interval: 'month' | 'year' | 'lifetime' | 'none' | null
+                    features: Json
+                    is_active: boolean
+                    sort_order: number
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id: string
+                    name: string
+                    description?: string | null
+                    price_krw?: number
+                    interval?: 'month' | 'year' | 'lifetime' | 'none' | null
+                    features?: Json
+                    is_active?: boolean
+                    sort_order?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    name?: string
+                    description?: string | null
+                    price_krw?: number
+                    interval?: 'month' | 'year' | 'lifetime' | 'none' | null
+                    features?: Json
+                    is_active?: boolean
+                    sort_order?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            user_subscriptions: {
+                Row: {
+                    id: string
+                    user_id: string
+                    plan_id: string
+                    status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'expired'
+                    provider: 'revenuecat' | 'stripe' | 'admin' | 'promo' | null
+                    provider_subscription_id: string | null
+                    current_period_start: string | null
+                    current_period_end: string | null
+                    trial_end: string | null
+                    canceled_at: string | null
+                    memo: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    plan_id: string
+                    status?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'expired'
+                    provider?: 'revenuecat' | 'stripe' | 'admin' | 'promo' | null
+                    provider_subscription_id?: string | null
+                    current_period_start?: string | null
+                    current_period_end?: string | null
+                    trial_end?: string | null
+                    canceled_at?: string | null
+                    memo?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    plan_id?: string
+                    status?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'expired'
+                    provider?: 'revenuecat' | 'stripe' | 'admin' | 'promo' | null
+                    provider_subscription_id?: string | null
+                    current_period_start?: string | null
+                    current_period_end?: string | null
+                    trial_end?: string | null
+                    canceled_at?: string | null
+                    memo?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            user_entitlement_overrides: {
+                Row: {
+                    id: string
+                    user_id: string
+                    feature_key: string
+                    feature_value: Json
+                    reason: string | null
+                    granted_by: string | null
+                    expires_at: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    feature_key: string
+                    feature_value?: Json
+                    reason?: string | null
+                    granted_by?: string | null
+                    expires_at?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    feature_key?: string
+                    feature_value?: Json
+                    reason?: string | null
+                    granted_by?: string | null
+                    expires_at?: string | null
+                    created_at?: string
+                }
+            }
+            payment_events: {
+                Row: {
+                    id: string
+                    user_id: string | null
+                    event_type: string
+                    provider: string
+                    provider_event_id: string | null
+                    amount: number | null
+                    currency: string
+                    payload: Json
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id?: string | null
+                    event_type: string
+                    provider: string
+                    provider_event_id?: string | null
+                    amount?: number | null
+                    currency?: string
+                    payload?: Json
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string | null
+                    event_type?: string
+                    provider?: string
+                    provider_event_id?: string | null
+                    amount?: number | null
+                    currency?: string
+                    payload?: Json
+                    created_at?: string
+                }
+            }
+            user_settings: {
+                Row: {
+                    user_id: string
+                    feature_modules: Json
+                    updated_at: string
+                }
+                Insert: {
+                    user_id: string
+                    feature_modules?: Json
+                    updated_at?: string
+                }
+                Update: {
+                    user_id?: string
+                    feature_modules?: Json
+                    updated_at?: string
+                }
+            }
+            compass_usage: {
+                Row: {
+                    id: string
+                    user_id: string
+                    used_at: string
+                    request_count: number
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    used_at?: string
+                    request_count?: number
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    used_at?: string
+                    request_count?: number
+                }
+            }
+        }
+        Functions: {
+            get_user_entitlements: {
+                Args: { p_user_id: string }
+                Returns: Json
             }
         }
     }

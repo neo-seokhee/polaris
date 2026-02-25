@@ -4,7 +4,8 @@ import { DateHeader } from "@/components/DateHeader";
 import { AffirmationCard } from "@/components/AffirmationCard";
 import { DDaySection } from "@/components/DDaySection";
 import { TodoSection } from "@/components/TodoSection";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
+import { FadeIn } from "@/components/FadeIn";
 import { useAffirmation } from "@/hooks/useAffirmation";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors, Spacing } from "@/constants/theme";
@@ -25,24 +26,29 @@ export function HomeScreen() {
 
     const HeaderComponent = (
         <View style={styles.cardsContainer}>
-            <AffirmationCard
-                text={affirmationText}
-                onShuffle={shuffleAffirmation}
-                canShuffle={canShuffle}
-            />
-            <DDaySection
-                affirmationText={affirmationText}
-                affirmations={affirmations}
-                onAddAffirmation={addAffirmation}
-                onUpdateAffirmation={updateAffirmation}
-                onDeleteAffirmation={deleteAffirmation}
-            />
+            <FadeIn delay={0}>
+                <AffirmationCard
+                    text={affirmationText}
+                    onShuffle={shuffleAffirmation}
+                    canShuffle={canShuffle}
+                />
+            </FadeIn>
+            <FadeIn delay={100}>
+                <DDaySection
+                    affirmationText={affirmationText}
+                    affirmations={affirmations}
+                    onAddAffirmation={addAffirmation}
+                    onUpdateAffirmation={updateAffirmation}
+                    onDeleteAffirmation={deleteAffirmation}
+                />
+            </FadeIn>
+            <View style={styles.sectionDivider} />
         </View>
     );
 
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <DemoBanner />
+            <StatusBanners />
             <View style={styles.fixedHeader}>
                 <DateHeader />
             </View>
@@ -67,5 +73,10 @@ const styles = StyleSheet.create({
     cardsContainer: {
         gap: Spacing.md,
         paddingVertical: Spacing.md,
+    },
+    sectionDivider: {
+        height: 1,
+        backgroundColor: Colors.borderPrimary,
+        marginTop: Spacing.sm,
     },
 });

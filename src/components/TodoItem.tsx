@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   },
   checkmarkText: {
     color: Colors.textOnAccent,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "bold",
   },
   content: {

@@ -2,13 +2,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { View, Text, StyleSheet } from "react-native";
 import { Wallet } from "lucide-react-native";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
 import { FeatureModuleHeader } from "@/components/FeatureModuleHeader";
 
 export function BudgetModuleScreen() {
   return (
     <SafeAreaView style={styles.container}>
-      <DemoBanner />
+      <StatusBanners />
       <FeatureModuleHeader title="가계부" />
       <View style={styles.content}>
         <View style={styles.card}>

@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { View, Text, Pressable, ActivityIndicator, StyleSheet, ScrollView, Linking, Platform, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, Linking, Platform, useWindowDimensions, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Plus, ChevronDown, ChevronUp, Flame, Tag, CheckCircle, LayoutGrid, ListChecks } from "lucide-react-native";
+import { TodoSkeleton } from "@/components/Skeleton";
+import { successNotification, lightImpact } from "@/lib/haptics";
 import { useFocusEffect } from "@react-navigation/native";
 import { DraggableList } from "./DraggableList";
 import { AddTodoModal } from "./AddTodoModal";
@@ -11,6 +13,7 @@ import { useTodoCategories } from "@/hooks/useTodoCategories";
 import { useDemoNudge } from "@/contexts/DemoNudgeContext";
 import { useWebLayout } from "@/contexts/WebLayoutContext";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
+import { ConfettiBurst } from "./ConfettiBurst";
 import type { Database } from '@/lib/database.types';
 
 type Todo = Database['public']['Tables']['todos']['Row'];
@@ -60,29 +63,50 @@ function MemoText({ memo }: { memo: string }) {
 function TodoItem({
   todo,
   isDragging,
+  isCelebrating,
   onToggleComplete,
   onToggleActive,
   onPress,
 }: {
   todo: Todo;
   isDragging: boolean;
+  isCelebrating?: boolean;
   onToggleComplete: (id: string, isCompleted: boolean) => void;
   onToggleActive: (id: string, isActive: boolean) => Promise<void>;
   onPress: (todo: Todo) => void;
 }) {
+  const checkboxScale = useRef(new Animated.Value(1)).current;
+  const showCompleted = todo.is_completed || isCelebrating;
+
+  useEffect(() => {
+    if (isCelebrating) {
+      checkboxScale.setValue(1);
+      Animated.sequence([
+        Animated.spring(checkboxScale, { toValue: 1.3, useNativeDriver: true, friction: 4, tension: 200 }),
+        Animated.spring(checkboxScale, { toValue: 1, useNativeDriver: true, friction: 5, tension: 100 }),
+      ]).start();
+    }
+  }, [isCelebrating]);
+
   return (
-    <View style={[styles.todoItemWrapper, isDragging && styles.todoItemDragging]}>
-      <View style={styles.todoContainer}>
-        <Pressable
-          style={styles.checkbox}
-          onPress={() => onToggleComplete(todo.id, todo.is_completed)}
-        >
-          {todo.is_completed && (
-            <View style={styles.checkmark}>
-              <Text style={styles.checkmarkText}>✓</Text>
-            </View>
-          )}
-        </Pressable>
+    <View style={[styles.todoItemWrapper, isDragging && styles.todoItemDragging, isCelebrating && styles.todoItemCelebrating]}>
+      <View style={[styles.todoContainer, isCelebrating && styles.todoContainerCelebrating]}>
+        <View style={styles.checkboxArea}>
+          <Animated.View style={{ transform: [{ scale: checkboxScale }] }}>
+            <Pressable
+              style={[styles.checkbox, showCompleted && styles.checkboxCompleted]}
+              onPress={() => onToggleComplete(todo.id, todo.is_completed)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              {showCompleted && (
+                <View style={styles.checkmark}>
+                  <Text style={styles.checkmarkTextCompleted}>✓</Text>
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
+          {isCelebrating && <ConfettiBurst />}
+        </View>
         <Pressable
           style={styles.content}
           onPress={() => onPress(todo)}
@@ -96,6 +120,7 @@ function TodoItem({
         <Pressable
           style={[styles.actionButton, todo.is_active && styles.actionButtonActive]}
           onPress={() => onToggleActive(todo.id, todo.is_active)}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Flame
             size={16}
@@ -111,28 +136,49 @@ function TodoItem({
 // 정적 할일 아이템 (완료된 항목 및 카테고리 항목용)
 function StaticTodoItem({
   todo,
+  isCelebrating,
   onToggleComplete,
   onToggleActive,
   onPress
 }: {
   todo: Todo;
+  isCelebrating?: boolean;
   onToggleComplete: (id: string, isCompleted: boolean) => void;
   onToggleActive: (id: string, isActive: boolean) => Promise<void>;
   onPress: (todo: Todo) => void;
 }) {
+  const checkboxScale = useRef(new Animated.Value(1)).current;
+  const showCompleted = todo.is_completed || isCelebrating;
+
+  useEffect(() => {
+    if (isCelebrating) {
+      checkboxScale.setValue(1);
+      Animated.sequence([
+        Animated.spring(checkboxScale, { toValue: 1.3, useNativeDriver: true, friction: 4, tension: 200 }),
+        Animated.spring(checkboxScale, { toValue: 1, useNativeDriver: true, friction: 5, tension: 100 }),
+      ]).start();
+    }
+  }, [isCelebrating]);
+
   return (
-    <View style={styles.todoItemWrapper}>
-      <View style={styles.todoContainer}>
-        <Pressable
-          style={styles.checkbox}
-          onPress={() => onToggleComplete(todo.id, todo.is_completed)}
-        >
-          {todo.is_completed && (
-            <View style={styles.checkmark}>
-              <Text style={styles.checkmarkText}>✓</Text>
-            </View>
-          )}
-        </Pressable>
+    <View style={[styles.todoItemWrapper, isCelebrating && styles.todoItemCelebrating]}>
+      <View style={[styles.todoContainer, isCelebrating && styles.todoContainerCelebrating]}>
+        <View style={styles.checkboxArea}>
+          <Animated.View style={{ transform: [{ scale: checkboxScale }] }}>
+            <Pressable
+              style={[styles.checkbox, showCompleted && styles.checkboxCompleted]}
+              onPress={() => onToggleComplete(todo.id, todo.is_completed)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              {showCompleted && (
+                <View style={styles.checkmark}>
+                  <Text style={styles.checkmarkTextCompleted}>✓</Text>
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
+          {isCelebrating && <ConfettiBurst />}
+        </View>
         <Pressable
           style={styles.content}
           onPress={() => onPress(todo)}
@@ -145,6 +191,7 @@ function StaticTodoItem({
         <Pressable
           style={[styles.actionButton, todo.is_active && styles.actionButtonActive]}
           onPress={() => onToggleActive(todo.id, todo.is_active)}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Flame
             size={16}
@@ -180,6 +227,23 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
 
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
+
+  // 완료 축하 애니메이션 상태
+  const [celebratingId, setCelebratingId] = useState<string | null>(null);
+  const celebrationTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const handleToggleCompleteWithCelebration = useCallback((id: string, isCompleted: boolean) => {
+    if (!isCompleted && !isDemoMode) {
+      successNotification();
+      setCelebratingId(id);
+      if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
+      celebrationTimerRef.current = setTimeout(() => setCelebratingId(null), 1200);
+      setTimeout(() => toggleCompleted(id, isCompleted), 650);
+      return;
+    }
+    lightImpact();
+    toggleCompleted(id, isCompleted);
+  }, [toggleCompleted, isDemoMode]);
 
   // 드래그 순서 상태
   const [importantOrder, setImportantOrder] = useState<string[]>([]);
@@ -365,6 +429,9 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
   const hasNoTodos = importantTodos.length === 0 && normalTodos.length === 0 &&
     Object.values(categorizedTodos).every(arr => arr.length === 0) && completedTodos.length === 0;
 
+  const totalTodoCount = todos.length;
+  const completedCount = completedTodos.length;
+
   // 드래그 리오더 핸들러
   const handleImportantReorder = useCallback((fromIndex: number, toIndex: number) => {
     const newOrder = [...importantTodos];
@@ -459,21 +526,23 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
     <TodoItem
       todo={todo}
       isDragging={isDragging}
-      onToggleComplete={toggleCompleted}
+      isCelebrating={celebratingId === todo.id}
+      onToggleComplete={handleToggleCompleteWithCelebration}
       onToggleActive={handleToggleActive}
       onPress={handleEditTodo}
     />
-  ), [toggleCompleted, handleToggleActive, handleEditTodo]);
+  ), [handleToggleCompleteWithCelebration, handleToggleActive, handleEditTodo, celebratingId]);
 
   const renderNormalItem = useCallback((todo: Todo, index: number, isDragging: boolean) => (
     <TodoItem
       todo={todo}
       isDragging={isDragging}
-      onToggleComplete={toggleCompleted}
+      isCelebrating={celebratingId === todo.id}
+      onToggleComplete={handleToggleCompleteWithCelebration}
       onToggleActive={handleToggleActive}
       onPress={handleEditTodo}
     />
-  ), [toggleCompleted, handleToggleActive, handleEditTodo]);
+  ), [handleToggleCompleteWithCelebration, handleToggleActive, handleEditTodo, celebratingId]);
 
   const keyExtractor = useCallback((todo: Todo) => todo.id, []);
   const boardColumns = useMemo(() => {
@@ -524,11 +593,12 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
     <TodoItem
       todo={todo}
       isDragging={isDragging}
-      onToggleComplete={toggleCompleted}
+      isCelebrating={celebratingId === todo.id}
+      onToggleComplete={handleToggleCompleteWithCelebration}
       onToggleActive={handleToggleActive}
       onPress={handleEditTodo}
     />
-  ), [toggleCompleted, handleToggleActive, handleEditTodo]);
+  ), [handleToggleCompleteWithCelebration, handleToggleActive, handleEditTodo, celebratingId]);
   const boardColumnWidth = 320 + Spacing.md;
 
   const resolveTargetColumnKey = useCallback((sourceColumnKey: string, translationX: number) => {
@@ -622,11 +692,7 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
   }, [isDesktopWeb, isBoardView, setTodoBoardWide]);
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-      </View>
-    );
+    return <TodoSkeleton />;
   }
 
   return (
@@ -642,11 +708,16 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
         {/* 오늘의 할일 헤더 */}
         <View style={styles.header}>
           <Text style={styles.title}>오늘의 할일</Text>
+          {totalTodoCount > 0 && (
+            <Text style={styles.progressText}>
+              {completedCount}/{totalTodoCount}
+            </Text>
+          )}
         </View>
 
         {/* 빈 상태 */}
         {hasNoTodos && (
-          <Text style={styles.emptyText}>할일이 없습니다. + 버튼을 눌러 추가하세요.</Text>
+          <Text style={styles.emptyText}>오늘 할일을 정리해볼까요?</Text>
         )}
 
         {shouldRenderBoard && boardColumns.length > 0 && (
@@ -754,7 +825,8 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
                     <StaticTodoItem
                       key={todo.id}
                       todo={todo}
-                      onToggleComplete={toggleCompleted}
+                      isCelebrating={celebratingId === todo.id}
+                      onToggleComplete={handleToggleCompleteWithCelebration}
                       onToggleActive={handleToggleActive}
                       onPress={handleEditTodo}
                     />
@@ -780,7 +852,7 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
                   <StaticTodoItem
                     key={todo.id}
                     todo={todo}
-                    onToggleComplete={toggleCompleted}
+                    onToggleComplete={handleToggleCompleteWithCelebration}
                     onToggleActive={handleToggleActive}
                     onPress={handleEditTodo}
                   />
@@ -806,7 +878,7 @@ export function TodoSection({ ListHeaderComponent }: TodoSectionProps) {
                 <StaticTodoItem
                   key={todo.id}
                   todo={todo}
-                  onToggleComplete={toggleCompleted}
+                  onToggleComplete={handleToggleCompleteWithCelebration}
                   onToggleActive={handleToggleActive}
                   onPress={handleEditTodo}
                 />
@@ -923,6 +995,10 @@ const styles = StyleSheet.create({
   todoItemDragging: {
     opacity: 0.95,
   },
+  todoItemCelebrating: {
+    overflow: 'visible' as const,
+    zIndex: 10,
+  },
   todoContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -930,6 +1006,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     padding: Spacing.lg,
     gap: Spacing.md,
+  },
+  todoContainerCelebrating: {
+    overflow: 'visible' as const,
+  },
+  checkboxArea: {
+    overflow: 'visible' as const,
   },
   checkbox: {
     width: 20,
@@ -940,13 +1022,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  checkboxCompleted: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
   checkmark: {
     justifyContent: "center",
     alignItems: "center",
   },
   checkmarkText: {
     color: Colors.accent,
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  checkmarkTextCompleted: {
+    color: Colors.textOnAccent,
+    fontSize: 14,
     fontWeight: "bold",
   },
   content: {
@@ -1012,6 +1103,10 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: '600',
     color: Colors.textPrimary,
+  },
+  progressText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textMuted,
   },
   emptyText: {
     fontSize: FontSizes.sm,

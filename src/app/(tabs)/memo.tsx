@@ -1,19 +1,22 @@
 import { useState, useCallback } from "react";
-import { View, Text, Pressable, ActivityIndicator, StyleSheet, Alert, Platform, Image, TouchableOpacity, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert, Platform, Image, TouchableOpacity, useWindowDimensions } from "react-native";
 import RenderHtml from "react-native-render-html";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Plus, Search, Tag, Filter, Star, ChevronDown, ChevronUp } from "lucide-react-native";
+import { Plus, Tag, Filter, Star, ChevronDown, ChevronUp } from "lucide-react-native";
+import { MemoSkeleton } from "@/components/Skeleton";
+import { FadeIn } from "@/components/FadeIn";
 import { DraggableList } from "@/components/DraggableList";
 import { AddMemoModal } from "@/components/AddMemoModal";
 import { EditMemoModal } from "@/components/EditMemoModal";
 import { CategoryManageModal } from "@/components/CategoryManageModal";
 import { CategoryFilterModal } from "@/components/CategoryFilterModal";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
 import { useMemos } from "@/hooks/useMemos";
 import { useCategories } from "@/hooks/useCategories";
 import { useDemoNudge } from "@/contexts/DemoNudgeContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
+import { lightImpact } from "@/lib/haptics";
 import type { Database } from "@/lib/database.types";
 
 type Memo = Database['public']['Tables']['memos']['Row'];
@@ -82,7 +85,7 @@ function MemoCard({
                     </View>
                     <TouchableOpacity
                         onPress={() => onToggleStar(memo.id, memo.is_starred)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                     >
                         <Star
                             size={16}
@@ -100,13 +103,13 @@ function MemoCard({
                                     .memo-content-white * {
                                         color: #FFFFFF !important;
                                         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-                                        font-size: 12px !important;
+                                        font-size: 14px !important;
                                         font-weight: normal !important;
                                     }
                                     .memo-content-white {
                                         color: #FFFFFF !important;
-                                        font-size: 12px;
-                                        line-height: 18px;
+                                        font-size: 14px;
+                                        line-height: 22px;
                                         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
                                     }
                                     .memo-content-white h1,
@@ -115,11 +118,11 @@ function MemoCard({
                                     .memo-content-white h4,
                                     .memo-content-white h5,
                                     .memo-content-white h6 {
-                                        font-size: 12px !important;
+                                        font-size: 14px !important;
                                         font-weight: normal !important;
                                         margin: 0 !important;
                                         padding: 0 !important;
-                                        line-height: 18px !important;
+                                        line-height: 22px !important;
                                     }
                                 `}</style>
                                 <div
@@ -137,8 +140,8 @@ function MemoCard({
                                 tagsStyles={{
                                     body: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
-                                        lineHeight: 18,
+                                        fontSize: 14,
+                                        lineHeight: 22,
                                         margin: 0,
                                         padding: 0,
                                     },
@@ -162,45 +165,45 @@ function MemoCard({
                                     },
                                     h1: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         fontWeight: 'normal',
                                         margin: 0,
-                                        lineHeight: 18,
+                                        lineHeight: 22,
                                     },
                                     h2: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         fontWeight: 'normal',
                                         margin: 0,
-                                        lineHeight: 18,
+                                        lineHeight: 22,
                                     },
                                     h3: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         fontWeight: 'normal',
                                         margin: 0,
-                                        lineHeight: 18,
+                                        lineHeight: 22,
                                     },
                                     h4: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         fontWeight: 'normal',
                                         margin: 0,
-                                        lineHeight: 18,
+                                        lineHeight: 22,
                                     },
                                     h5: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         fontWeight: 'normal',
                                         margin: 0,
-                                        lineHeight: 18,
+                                        lineHeight: 22,
                                     },
                                     h6: {
                                         color: '#FFFFFF',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         fontWeight: 'normal',
                                         margin: 0,
-                                        lineHeight: 18,
+                                        lineHeight: 22,
                                     },
                                     a: {
                                         color: '#FFFFFF',
@@ -235,7 +238,7 @@ function MemoCard({
                     {isLongContent && (
                         <TouchableOpacity
                             onPress={() => setExpanded(!expanded)}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                         >
                             {expanded ? (
                                 <ChevronUp size={16} color={Colors.textMuted} />
@@ -329,6 +332,7 @@ export function MemoScreen() {
     };
 
     const handleToggleStar = useCallback(async (id: string, isStarred: boolean) => {
+        lightImpact();
         await toggleStarred(id, isStarred);
     }, [toggleStarred]);
 
@@ -344,27 +348,29 @@ export function MemoScreen() {
     }, [memos, reorderMemos]);
 
     const renderItem = useCallback((memo: Memo, index: number, isDragging: boolean) => (
-        <MemoCard
-            memo={memo}
-            isDragging={isDragging}
-            onPress={handleEditMemo}
-            onToggleStar={handleToggleStar}
-        />
+        <FadeIn delay={index * 40}>
+            <MemoCard
+                memo={memo}
+                isDragging={isDragging}
+                onPress={handleEditMemo}
+                onToggleStar={handleToggleStar}
+            />
+        </FadeIn>
     ), [handleEditMemo, handleToggleStar]);
 
     const keyExtractor = useCallback((item: Memo) => item.id, []);
 
     const getEmptyMessage = () => {
         if (starFilterActive && isCategoryFilterActive) {
-            return { text: '조건에 맞는 메모가 없습니다.', subText: '필터를 변경해보세요.' };
+            return { text: '조건에 맞는 메모가 없어요', subText: '다른 필터로 찾아볼까요?' };
         }
         if (starFilterActive) {
-            return { text: '별표 친 메모가 없습니다.', subText: '메모에서 별표를 눌러 추가하세요.' };
+            return { text: '중요 표시한 메모가 없어요', subText: '메모에서 별표를 눌러 표시해보세요' };
         }
         if (isCategoryFilterActive) {
-            return { text: '해당 카테고리의 메모가 없습니다.', subText: '다른 카테고리를 선택하거나 메모를 추가하세요.' };
+            return { text: '이 분류에는 메모가 없어요', subText: '다른 분류를 선택해보세요' };
         }
-        return { text: '메모가 없습니다.', subText: '+ 버튼을 눌러 새 메모를 작성하세요.' };
+        return { text: '아직 메모가 없어요', subText: '떠오르는 생각을 기록해보세요' };
     };
 
     const ListEmptyComponent = useCallback(() => {
@@ -380,16 +386,14 @@ export function MemoScreen() {
     if (loading) {
         return (
             <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={Colors.accent} />
-                </View>
+                <MemoSkeleton />
             </SafeAreaView>
         );
     }
 
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <DemoBanner />
+            <StatusBanners />
             {/* 고정 헤더 */}
             <View style={styles.fixedHeader}>
                 <View style={styles.headerTitleContainer}>
@@ -397,12 +401,6 @@ export function MemoScreen() {
                     <Text style={styles.headerTitle}>메모</Text>
                 </View>
                 <View style={styles.headerActions}>
-                    <Pressable
-                        style={styles.headerButton}
-                        onPress={() => showAlert('준비중', '검색 기능은 준비중입니다.')}
-                    >
-                        <Search size={20} color={Colors.textMuted} />
-                    </Pressable>
                     <Pressable
                         style={styles.headerButton}
                         onPress={() => setCategoryModalVisible(true)}
@@ -537,10 +535,10 @@ const styles = StyleSheet.create({
     headerActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: Spacing['2xl'],
+        gap: Spacing.md,
     },
     headerButton: {
-        padding: Spacing.sm,
+        padding: Spacing.xl,
     },
     listContent: {
         paddingHorizontal: Spacing['3xl'],
@@ -583,10 +581,10 @@ const styles = StyleSheet.create({
         maxHeight: 54,
     },
     memoContent: {
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: '400',
         color: '#FFFFFF',
-        lineHeight: 18,
+        lineHeight: 22,
     },
     memoFooter: {
         flexDirection: 'row',

@@ -163,13 +163,13 @@ export function GoalDetailModal({ visible, onClose, goal, onUpdate, onDelete }: 
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm('이 목표를 삭제하시겠습니까?')) {
+            if (window.confirm('이 목표를 삭제할까요?')) {
                 confirmDelete();
             }
         } else {
             Alert.alert(
                 '목표 삭제',
-                '이 목표를 삭제하시겠습니까?',
+                '이 목표를 삭제할까요?',
                 [
                     { text: '취소', style: 'cancel' },
                     { text: '삭제', style: 'destructive', onPress: confirmDelete },
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.bgTertiary,
         borderRadius: BorderRadius.lg,
         padding: Spacing['2xl'],
-        fontSize: 12,
+        fontSize: 14,
         color: '#FFFFFF',
     },
     textArea: {
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.md,
         backgroundColor: Colors.bgTertiary,
         textAlign: 'center',
-        fontSize: 12,
+        fontSize: 14,
         color: '#FFFFFF',
     },
     monthProgressDisplay: {

@@ -1,7 +1,8 @@
 import { Redirect, Tabs, usePathname } from "expo-router";
 import { Menu } from "lucide-react-native";
 import { useAuth } from "@/contexts/AuthContext";
-import { View, ActivityIndicator, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
+import { ModuleSkeleton } from "@/components/Skeleton";
 import { WindroseIcon } from "@/components/icons/WindroseIcon";
 import { useFeatureModules } from "@/contexts/FeatureModulesContext";
 import { FEATURE_MODULE_MAP } from "@/modules/featureModules";
@@ -23,18 +24,10 @@ export default function TabLayout() {
     const pathname = usePathname();
     const isCompassActive = pathname?.includes("/compass");
 
-    if (loading) {
+    if (loading || !moduleReady) {
         return (
             <View style={styles.loading}>
-                <ActivityIndicator size="large" color={Colors.accent} />
-            </View>
-        );
-    }
-
-    if (!moduleReady) {
-        return (
-            <View style={styles.loading}>
-                <ActivityIndicator size="large" color={Colors.accent} />
+                <ModuleSkeleton />
             </View>
         );
     }

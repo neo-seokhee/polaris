@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNetwork } from '@/contexts/NetworkContext';
 import { useAnalytics } from '@/contexts/AnalyticsContext';
 import { notifySlack } from '@/lib/slackNotify';
+import { writeCache, readCache } from '@/lib/offlineCache';
+import { enqueue } from '@/lib/syncQueue';
 import type { Database } from '@/lib/database.types';
 import { DEMO_GOALS } from '@/data/demoData';
 
@@ -47,8 +50,11 @@ interface UpdateGoalParams {
     monthlyProgress?: number[];
 }
 
+const TABLE = 'goals';
+
 export function useGoals() {
     const { user, isDemoMode } = useAuth();
+    const { isOnline, syncVersion } = useNetwork();
     const { track } = useAnalytics();
     const [goals, setGoals] = useState<Goal[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -73,6 +79,8 @@ export function useGoals() {
         };
     };
 
+    const cacheTable = `${TABLE}_${selectedYear}`;
+
     // 목표 목록 불러오기
     const fetchGoals = useCallback(async (year: number) => {
         if (isDemoMode) {
@@ -83,33 +91,42 @@ export function useGoals() {
         }
         if (!user) return;
 
+        const ct = `${TABLE}_${year}`;
+
         try {
             setIsLoading(true);
-            const { data, error } = await supabase
-                .from('goals')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('year', year)
-                .order('position', { ascending: true, nullsFirst: false })
-                .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            if (isOnline) {
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .eq('year', year)
+                    .order('position', { ascending: true, nullsFirst: false })
+                    .order('created_at', { ascending: false });
 
-            // position이 null인 항목은 뒤로 정렬
-            const sortedData = (data || []).sort((a, b) => {
-                if (a.position === null && b.position === null) return 0;
-                if (a.position === null) return 1;
-                if (b.position === null) return -1;
-                return a.position - b.position;
-            });
+                if (error) throw error;
 
-            setGoals(sortedData.map(transformGoal));
+                const sortedData = (data || []).sort((a, b) => {
+                    if (a.position === null && b.position === null) return 0;
+                    if (a.position === null) return 1;
+                    if (b.position === null) return -1;
+                    return a.position - b.position;
+                });
+
+                setGoals(sortedData.map(transformGoal));
+                writeCache(user.id, ct, sortedData);
+            } else {
+                const cached = await readCache<GoalRow[]>(user.id, ct);
+                setGoals((cached || []).map(transformGoal));
+            }
         } catch (err) {
-            // Error loading goals
+            const cached = await readCache<GoalRow[]>(user.id, ct);
+            if (cached) setGoals(cached.map(transformGoal));
         } finally {
             setIsLoading(false);
         }
-    }, [user, isDemoMode]);
+    }, [user, isDemoMode, isOnline]);
 
     // 연도 변경 시 목표 다시 불러오기
     useEffect(() => {
@@ -125,90 +142,141 @@ export function useGoals() {
             setGoals([]);
             setIsLoading(false);
         }
-    }, [user, isDemoMode, selectedYear, fetchGoals]);
+    }, [user, isDemoMode, selectedYear, fetchGoals, syncVersion]);
 
     // 목표 추가
     const addGoal = async (params: AddGoalParams): Promise<{ success: boolean; error?: string; demoBlocked?: boolean }> => {
         if (isDemoMode) return { success: false, demoBlocked: true };
-        if (!user) return { success: false, error: '로그인이 필요합니다.' };
+        if (!user) return { success: false, error: '먼저 로그인해주세요.' };
 
-        try {
-            const newGoal: GoalInsert = {
-                user_id: user.id,
-                title: params.title,
-                description: params.description || null,
-                type: params.type,
-                year: params.year,
-                percentage: params.type === 'percentage' ? 0 : null,
-                monthly_status: params.type === 'monthly' ? Array(12).fill('pending') : null,
-                target_value: params.type === 'percentage' ? (params.targetValue || null) : null,
-                target_unit: params.type === 'percentage' ? (params.targetUnit || null) : null,
-                monthly_progress: params.type === 'percentage' ? Array(12).fill(0) : null,
-            };
+        const newGoalData: GoalInsert = {
+            user_id: user.id,
+            title: params.title,
+            description: params.description || null,
+            type: params.type,
+            year: params.year,
+            percentage: params.type === 'percentage' ? 0 : null,
+            monthly_status: params.type === 'monthly' ? Array(12).fill('pending') : null,
+            target_value: params.type === 'percentage' ? (params.targetValue || null) : null,
+            target_unit: params.type === 'percentage' ? (params.targetUnit || null) : null,
+            monthly_progress: params.type === 'percentage' ? Array(12).fill(0) : null,
+        };
 
-            const { data, error } = await supabase
-                .from('goals')
-                .insert(newGoal)
-                .select()
-                .single();
+        if (isOnline) {
+            try {
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .insert(newGoalData)
+                    .select()
+                    .single();
 
-            if (error) throw error;
+                if (error) throw error;
 
-            if (data && params.year === selectedYear) {
-                setGoals(prev => [transformGoal(data), ...prev]);
+                if (data && params.year === selectedYear) {
+                    setGoals(prev => [transformGoal(data), ...prev]);
+                }
+
+                track('goal_created', { type: params.type, year: params.year });
+                notifySlack('goal_created', { userId: user.id }, params.title);
+                return { success: true };
+            } catch (err: any) {
+                return { success: false, error: err.message };
             }
+        } else {
+            const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const optimistic: GoalRow = {
+                ...newGoalData,
+                id: tempId,
+                position: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            } as unknown as GoalRow;
 
+            if (params.year === selectedYear) {
+                setGoals(prev => [transformGoal(optimistic), ...prev]);
+            }
+            await enqueue(user.id, {
+                table: TABLE,
+                type: 'insert',
+                rowId: tempId,
+                data: newGoalData as unknown as Record<string, unknown>,
+            });
             track('goal_created', { type: params.type, year: params.year });
-            notifySlack('goal_created', { userId: user.id }, params.title);
             return { success: true };
-        } catch (err: any) {
-            return { success: false, error: err.message };
         }
     };
 
     // 목표 수정
     const updateGoal = async (params: UpdateGoalParams): Promise<{ success: boolean; error?: string; demoBlocked?: boolean }> => {
         if (isDemoMode) return { success: false, demoBlocked: true };
-        if (!user) return { success: false, error: '로그인이 필요합니다.' };
+        if (!user) return { success: false, error: '먼저 로그인해주세요.' };
 
-        try {
-            const updates: GoalUpdate = {};
-            if (params.title !== undefined) updates.title = params.title;
-            if (params.description !== undefined) updates.description = params.description;
-            if (params.type !== undefined) updates.type = params.type;
-            if (params.percentage !== undefined) updates.percentage = params.percentage;
-            if (params.monthlyStatus !== undefined) updates.monthly_status = params.monthlyStatus;
-            if (params.targetValue !== undefined) updates.target_value = params.targetValue;
-            if (params.targetUnit !== undefined) updates.target_unit = params.targetUnit;
-            if (params.monthlyProgress !== undefined) updates.monthly_progress = params.monthlyProgress;
-            updates.updated_at = new Date().toISOString();
+        const updates: GoalUpdate = {};
+        if (params.title !== undefined) updates.title = params.title;
+        if (params.description !== undefined) updates.description = params.description;
+        if (params.type !== undefined) updates.type = params.type;
+        if (params.percentage !== undefined) updates.percentage = params.percentage;
+        if (params.monthlyStatus !== undefined) updates.monthly_status = params.monthlyStatus;
+        if (params.targetValue !== undefined) updates.target_value = params.targetValue;
+        if (params.targetUnit !== undefined) updates.target_unit = params.targetUnit;
+        if (params.monthlyProgress !== undefined) updates.monthly_progress = params.monthlyProgress;
+        updates.updated_at = new Date().toISOString();
 
-            const { data, error } = await supabase
-                .from('goals')
-                .update(updates)
-                .eq('id', params.id)
-                .eq('user_id', user.id)
-                .select()
-                .single();
+        // Optimistic update (로컬에서 먼저 반영)
+        setGoals(prev => prev.map(g => {
+            if (g.id !== params.id) return g;
+            return {
+                ...g,
+                ...(params.title !== undefined && { title: params.title }),
+                ...(params.description !== undefined && { description: params.description }),
+                ...(params.type !== undefined && { type: params.type }),
+                ...(params.percentage !== undefined && { percentage: params.percentage }),
+                ...(params.monthlyStatus !== undefined && { monthlyStatus: params.monthlyStatus }),
+                ...(params.targetValue !== undefined && { targetValue: params.targetValue }),
+                ...(params.targetUnit !== undefined && { targetUnit: params.targetUnit }),
+                ...(params.monthlyProgress !== undefined && { monthlyProgress: params.monthlyProgress }),
+            };
+        }));
 
-            if (error) throw error;
+        if (isOnline) {
+            try {
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .update(updates)
+                    .eq('id', params.id)
+                    .eq('user_id', user.id)
+                    .select()
+                    .single();
 
-            if (data) {
-                setGoals(prev => prev.map(g => g.id === params.id ? transformGoal(data) : g));
+                if (error) throw error;
+
+                if (data) {
+                    setGoals(prev => prev.map(g => g.id === params.id ? transformGoal(data) : g));
+                }
+
+                track('goal_updated', {
+                    has_title: params.title !== undefined,
+                    has_description: params.description !== undefined,
+                    has_type: params.type !== undefined,
+                    has_percentage: params.percentage !== undefined,
+                    has_monthly_status: params.monthlyStatus !== undefined,
+                    has_target: params.targetValue !== undefined || params.targetUnit !== undefined,
+                    has_monthly_progress: params.monthlyProgress !== undefined,
+                });
+                return { success: true };
+            } catch (err: any) {
+                return { success: false, error: err.message };
             }
-
-            track('goal_updated', {
-                has_title: params.title !== undefined,
-                has_description: params.description !== undefined,
-                has_type: params.type !== undefined,
-                has_percentage: params.percentage !== undefined,
-                has_monthly_status: params.monthlyStatus !== undefined,
-                has_target: params.targetValue !== undefined || params.targetUnit !== undefined,
-                has_monthly_progress: params.monthlyProgress !== undefined,
+        } else {
+            await enqueue(user.id, {
+                table: TABLE,
+                type: 'update',
+                rowId: params.id,
+                data: updates as unknown as Record<string, unknown>,
+                filters: { user_id: user.id },
             });
+            track('goal_updated');
             return { success: true };
-        } catch (err: any) {
-            return { success: false, error: err.message };
         }
     };
 
@@ -251,7 +319,6 @@ export function useGoals() {
         const newMonthlyProgress = [...goal.monthlyProgress];
         newMonthlyProgress[monthIndex] = Math.max(0, value);
 
-        // 달성률 자동 계산
         const total = newMonthlyProgress.reduce((sum, v) => sum + v, 0);
         const newPercentage = goal.targetValue ? Math.min(100, Math.round((total / goal.targetValue) * 100)) : 0;
 
@@ -261,23 +328,34 @@ export function useGoals() {
     // 목표 삭제
     const deleteGoal = async (goalId: string): Promise<{ success: boolean; error?: string; demoBlocked?: boolean }> => {
         if (isDemoMode) return { success: false, demoBlocked: true };
-        if (!user) return { success: false, error: '로그인이 필요합니다.' };
+        if (!user) return { success: false, error: '먼저 로그인해주세요.' };
 
-        try {
-            const { error } = await supabase
-                .from('goals')
-                .delete()
-                .eq('id', goalId)
-                .eq('user_id', user.id);
+        // Optimistic
+        setGoals(prev => prev.filter(g => g.id !== goalId));
 
-            if (error) throw error;
+        if (isOnline) {
+            try {
+                const { error } = await supabase
+                    .from(TABLE)
+                    .delete()
+                    .eq('id', goalId)
+                    .eq('user_id', user.id);
 
-            setGoals(prev => prev.filter(g => g.id !== goalId));
+                if (error) throw error;
+                track('goal_deleted');
+                return { success: true };
+            } catch (err: any) {
+                return { success: false, error: err.message };
+            }
+        } else {
+            await enqueue(user.id, {
+                table: TABLE,
+                type: 'delete',
+                rowId: goalId,
+                filters: { user_id: user.id },
+            });
             track('goal_deleted');
-
             return { success: true };
-        } catch (err: any) {
-            return { success: false, error: err.message };
         }
     };
 
@@ -285,27 +363,38 @@ export function useGoals() {
     const reorderGoals = async (fromIndex: number, toIndex: number) => {
         if (isDemoMode || !user) return;
 
-        // 로컬 상태 먼저 업데이트 (optimistic)
         const newGoals = [...goals];
         const [movedItem] = newGoals.splice(fromIndex, 1);
         newGoals.splice(toIndex, 0, movedItem);
         setGoals(newGoals);
 
-        // DB에 position 업데이트
-        try {
-            const updates = newGoals.map((goal, index) =>
-                supabase
-                    .from('goals')
-                    .update({ position: index })
-                    .eq('id', goal.id)
-                    .eq('user_id', user.id)
-            );
-            await Promise.all(updates);
+        if (isOnline) {
+            try {
+                const updates = newGoals.map((goal, index) =>
+                    supabase
+                        .from(TABLE)
+                        .update({ position: index })
+                        .eq('id', goal.id)
+                        .eq('user_id', user.id)
+                );
+                await Promise.all(updates);
+                track('goals_reordered', { count: newGoals.length });
+            } catch (err) {
+                console.error('[Goals] Failed to save order:', err);
+                fetchGoals(selectedYear);
+            }
+        } else {
+            // 오프라인: 각 목표의 position update를 큐에 추가
+            for (let i = 0; i < newGoals.length; i++) {
+                await enqueue(user.id, {
+                    table: TABLE,
+                    type: 'update',
+                    rowId: newGoals[i].id,
+                    data: { position: i },
+                    filters: { user_id: user.id },
+                });
+            }
             track('goals_reordered', { count: newGoals.length });
-        } catch (err) {
-            console.error('[Goals] Failed to save order:', err);
-            // 실패 시 다시 불러오기
-            fetchGoals(selectedYear);
         }
     };
 

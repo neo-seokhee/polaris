@@ -3,6 +3,7 @@ import {
   ListChecks,
   Target,
   StickyNote,
+  CalendarDays,
   CircleDollarSign,
   Clapperboard,
   BatteryFull,
@@ -53,6 +54,15 @@ export const MODULE_CATALOG: ModuleCatalogItem[] = [
     status: "available",
     icon: StickyNote,
     moduleId: "memo",
+  },
+  {
+    key: "schedule",
+    title: "일정",
+    description: "일정을 관리하고 캘린더와 연동합니다.",
+    category: "핵심 생산성",
+    status: "available",
+    icon: CalendarDays,
+    moduleId: "schedule",
   },
   {
     key: "settlement",

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform, ScrollView, KeyboardAvoidingView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { getKakaoAuthRequestConfig } from "@/lib/kakaoOAuth";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
 import { KakaoIcon, AppleIcon } from "@/components/SocialIcons";
+import { ChevronDown, ChevronUp } from "lucide-react-native";
 
 export default function LoginScreen() {
     const [email, setEmail] = useState("");
@@ -13,6 +14,7 @@ export default function LoginScreen() {
     const [loading, setLoading] = useState(false);
     const [kakaoLoading, setKakaoLoading] = useState(false);
     const [appleLoading, setAppleLoading] = useState(false);
+    const [showEmailLogin, setShowEmailLogin] = useState(false);
     const { signIn, signInWithKakao, signInWithApple, isKakaoAvailable, isAppleAvailable, enterDemoMode } = useAuth();
 
     // Redirect URI 미리 계산
@@ -29,8 +31,8 @@ export default function LoginScreen() {
         setKakaoLoading(false);
 
         if (error) {
-            if (error.message !== '로그인이 취소되었습니다.') {
-                Alert.alert("카카오 로그인 실패", error.message);
+            if (error.message !== '로그인이 취소됐어요.') {
+                Alert.alert("로그인 안내", "카카오 로그인 중 문제가 생겼어요. 다시 시도해주세요.");
             }
         } else {
             router.replace("/(tabs)");
@@ -43,8 +45,8 @@ export default function LoginScreen() {
         setAppleLoading(false);
 
         if (error) {
-            if (error.message !== '로그인이 취소되었습니다.') {
-                Alert.alert("Apple 로그인 실패", error.message);
+            if (error.message !== '로그인이 취소됐어요.') {
+                Alert.alert("로그인 안내", "Apple 로그인 중 문제가 생겼어요. 다시 시도해주세요.");
             }
         } else {
             router.replace("/(tabs)");
@@ -53,7 +55,7 @@ export default function LoginScreen() {
 
     const handleLogin = async () => {
         if (!email || !password) {
-            Alert.alert("오류", "이메일과 비밀번호를 입력해주세요.");
+            Alert.alert("입력 확인", "이메일과 비밀번호를 모두 입력해주세요.");
             return;
         }
 
@@ -62,106 +64,134 @@ export default function LoginScreen() {
         setLoading(false);
 
         if (error) {
-            Alert.alert("로그인 실패", error.message);
+            Alert.alert("로그인 안내", "이메일 또는 비밀번호를 확인해주세요.");
         } else {
             router.replace("/(tabs)");
         }
     };
 
+    const hasSocialLogin = isKakaoAvailable || (Platform.OS === 'ios' && isAppleAvailable);
+
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.content}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>Polaris</Text>
-                    <Text style={styles.subtitle}>당신의 목표를 향한 나침판</Text>
-                </View>
-
-                <View style={styles.form}>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>이메일</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="이메일을 입력하세요"
-                            placeholderTextColor={Colors.textMuted}
-                            value={email}
-                            onChangeText={setEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                        />
+            <KeyboardAvoidingView
+                style={styles.keyboardView}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* 브랜드 헤더 - Value First */}
+                    <View style={styles.header}>
+                        <Text style={styles.title}>Polaris</Text>
+                        <Text style={styles.subtitle}>당신의 목표를 향한 나침반</Text>
                     </View>
 
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>비밀번호</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="비밀번호를 입력하세요"
-                            placeholderTextColor={Colors.textMuted}
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <Pressable
-                        style={[styles.button, loading && styles.buttonDisabled]}
-                        onPress={handleLogin}
-                        disabled={loading}
-                    >
-                        <Text style={styles.buttonText}>
-                            {loading ? "로그인 중..." : "로그인"}
-                        </Text>
-                    </Pressable>
-
-                    <Pressable
-                        style={[
-                            styles.kakaoButton,
-                            (!isKakaoAvailable || kakaoLoading) && styles.kakaoButtonDisabled,
-                        ]}
-                        onPress={handleKakaoLogin}
-                        disabled={!isKakaoAvailable || kakaoLoading}
-                    >
-                        <View style={styles.socialButtonContent}>
-                            <KakaoIcon size={18} color="#191919" />
-                            <Text style={styles.kakaoButtonText}>
-                                {kakaoLoading ? "로그인 중..." : isKakaoAvailable ? "카카오로 로그인" : "카카오 로그인 (준비중)"}
-                            </Text>
-                        </View>
-                    </Pressable>
-
-                    {Platform.OS === 'ios' && isAppleAvailable && (
-                        <Pressable
-                            style={[
-                                styles.appleButton,
-                                appleLoading && styles.buttonDisabled,
-                            ]}
-                            onPress={handleAppleLogin}
-                            disabled={appleLoading}
-                        >
-                            <View style={styles.socialButtonContent}>
-                                <AppleIcon size={18} color="#FFFFFF" />
-                                <Text style={styles.appleButtonText}>
-                                    {appleLoading ? "로그인 중..." : "Apple로 로그인"}
-                                </Text>
-                            </View>
-                        </Pressable>
-                    )}
-
-                    <View style={styles.footer}>
-                        <Text style={styles.footerText}>계정이 없으신가요? </Text>
-                        <Link href="/(auth)/signup" asChild>
-                            <Pressable>
-                                <Text style={styles.link}>회원가입</Text>
+                    <View style={styles.form}>
+                        {/* 소셜 로그인 우선 배치 - Easy to Answer */}
+                        {isKakaoAvailable && (
+                            <Pressable
+                                style={[styles.kakaoButton, kakaoLoading && styles.buttonDisabled]}
+                                onPress={handleKakaoLogin}
+                                disabled={kakaoLoading}
+                            >
+                                <View style={styles.socialButtonContent}>
+                                    <KakaoIcon size={18} color="#191919" />
+                                    <Text style={styles.kakaoButtonText}>
+                                        {kakaoLoading ? "로그인 중..." : "카카오로 시작하기"}
+                                    </Text>
+                                </View>
                             </Pressable>
-                        </Link>
-                    </View>
+                        )}
 
-                    <Pressable style={styles.demoLink} onPress={handleDemoMode}>
-                        <Text style={styles.demoLinkText}>먼저 둘러볼게요</Text>
-                    </Pressable>
-                </View>
-            </View>
+                        {Platform.OS === 'ios' && isAppleAvailable && (
+                            <Pressable
+                                style={[styles.appleButton, appleLoading && styles.buttonDisabled]}
+                                onPress={handleAppleLogin}
+                                disabled={appleLoading}
+                            >
+                                <View style={styles.socialButtonContent}>
+                                    <AppleIcon size={18} color="#FFFFFF" />
+                                    <Text style={styles.appleButtonText}>
+                                        {appleLoading ? "로그인 중..." : "Apple로 시작하기"}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                        )}
+
+                        {/* 구분선 */}
+                        {hasSocialLogin && (
+                            <View style={styles.dividerRow}>
+                                <View style={styles.dividerLine} />
+                                <Text style={styles.dividerText}>또는</Text>
+                                <View style={styles.dividerLine} />
+                            </View>
+                        )}
+
+                        {/* 이메일 로그인 - 접이식 */}
+                        <Pressable
+                            style={styles.emailToggle}
+                            onPress={() => setShowEmailLogin(!showEmailLogin)}
+                        >
+                            <Text style={styles.emailToggleText}>이메일로 로그인</Text>
+                            {showEmailLogin
+                                ? <ChevronUp size={16} color={Colors.textMuted} />
+                                : <ChevronDown size={16} color={Colors.textMuted} />
+                            }
+                        </Pressable>
+
+                        {showEmailLogin && (
+                            <View style={styles.emailSection}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="이메일"
+                                    placeholderTextColor={Colors.textMuted}
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="비밀번호"
+                                    placeholderTextColor={Colors.textMuted}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry
+                                    autoCapitalize="none"
+                                />
+                                <Pressable
+                                    style={[styles.button, loading && styles.buttonDisabled]}
+                                    onPress={handleLogin}
+                                    disabled={loading}
+                                >
+                                    <Text style={styles.buttonText}>
+                                        {loading ? "로그인 중..." : "로그인"}
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        )}
+
+                        {/* 회원가입 링크 */}
+                        <View style={styles.footer}>
+                            <Text style={styles.footerText}>처음이신가요? </Text>
+                            <Link href="/(auth)/signup" asChild>
+                                <Pressable hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                    <Text style={styles.link}>회원가입</Text>
+                                </Pressable>
+                            </Link>
+                        </View>
+
+                        {/* 둘러보기 - 더 눈에 띄게 */}
+                        <Pressable style={styles.demoButton} onPress={handleDemoMode}>
+                            <Text style={styles.demoButtonText}>먼저 둘러볼게요</Text>
+                        </Pressable>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
@@ -171,10 +201,14 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.bgPrimary,
     },
-    content: {
+    keyboardView: {
         flex: 1,
-        padding: Spacing['4xl'],
+    },
+    scrollContent: {
+        flexGrow: 1,
         justifyContent: 'center',
+        paddingHorizontal: Spacing['4xl'],
+        paddingVertical: Spacing['4xl'],
     },
     header: {
         alignItems: 'center',
@@ -184,106 +218,127 @@ const styles = StyleSheet.create({
         fontSize: 48,
         fontWeight: '700',
         color: Colors.accent,
-        marginBottom: Spacing.md,
+        marginBottom: Spacing.lg,
     },
     subtitle: {
-        fontSize: FontSizes.base,
+        fontSize: FontSizes.lg,
         color: Colors.textSecondary,
+        letterSpacing: 0.3,
     },
     form: {
-        gap: Spacing['3xl'],
+        gap: Spacing['2xl'],
     },
-    inputGroup: {
-        gap: Spacing.md,
-    },
-    label: {
-        fontSize: FontSizes.sm,
-        fontWeight: '600',
-        color: Colors.textPrimary,
-    },
-    input: {
-        backgroundColor: Colors.bgSecondary,
-        borderWidth: 1,
-        borderColor: Colors.borderPrimary,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
-        fontSize: FontSizes.base,
-        color: Colors.textPrimary,
-    },
-    button: {
-        backgroundColor: Colors.accent,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
-        alignItems: 'center',
-        marginTop: Spacing.md,
-    },
-    buttonDisabled: {
-        opacity: 0.5,
-    },
-    buttonText: {
-        fontSize: FontSizes.base,
-        fontWeight: '600',
-        color: Colors.textOnDark,
-    },
+    // 소셜 버튼 - 큰 터치 타겟
     kakaoButton: {
         backgroundColor: '#FEE500',
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
+        borderRadius: BorderRadius['2xl'],
+        paddingVertical: Spacing['2xl'] + 2,
         alignItems: 'center',
     },
     socialButtonContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: Spacing.md,
-    },
-    kakaoButtonDisabled: {
-        backgroundColor: Colors.bgTertiary,
-        opacity: 0.5,
+        gap: Spacing.lg,
     },
     kakaoButtonText: {
-        fontSize: FontSizes.base,
+        fontSize: FontSizes.lg,
         fontWeight: '600',
         color: '#191919',
     },
     appleButton: {
         backgroundColor: '#000000',
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
+        borderRadius: BorderRadius['2xl'],
+        paddingVertical: Spacing['2xl'] + 2,
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.borderPrimary,
     },
     appleButtonText: {
-        fontSize: FontSizes.base,
+        fontSize: FontSizes.lg,
         fontWeight: '600',
         color: '#FFFFFF',
+    },
+    // 구분선
+    dividerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing['2xl'],
+        paddingVertical: Spacing.sm,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: Colors.borderPrimary,
+    },
+    dividerText: {
+        fontSize: FontSizes.sm,
+        color: Colors.textMuted,
+    },
+    // 이메일 토글
+    emailToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.lg,
+    },
+    emailToggleText: {
+        fontSize: FontSizes.base,
+        color: Colors.textMuted,
+    },
+    emailSection: {
+        gap: Spacing['2xl'],
+    },
+    input: {
+        backgroundColor: Colors.bgSecondary,
+        borderWidth: 1,
+        borderColor: Colors.borderPrimary,
+        borderRadius: BorderRadius['2xl'],
+        paddingHorizontal: Spacing['2xl'],
+        paddingVertical: Spacing['2xl'],
+        fontSize: FontSizes.lg,
+        color: Colors.textPrimary,
+    },
+    button: {
+        backgroundColor: Colors.accent,
+        borderRadius: BorderRadius['2xl'],
+        paddingVertical: Spacing['2xl'] + 2,
+        alignItems: 'center',
+    },
+    buttonDisabled: {
+        opacity: 0.5,
+    },
+    buttonText: {
+        fontSize: FontSizes.lg,
+        fontWeight: '600',
+        color: Colors.textOnDark,
     },
     footer: {
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: Spacing['2xl'],
+        marginTop: Spacing.lg,
     },
     footerText: {
-        fontSize: FontSizes.sm,
+        fontSize: FontSizes.base,
         color: Colors.textSecondary,
     },
     link: {
-        fontSize: FontSizes.sm,
+        fontSize: FontSizes.base,
         fontWeight: '600',
         color: Colors.accent,
     },
-    demoLink: {
+    demoButton: {
         alignItems: 'center',
-        paddingVertical: Spacing.lg,
+        paddingVertical: Spacing['2xl'],
+        backgroundColor: Colors.bgSecondary,
+        borderRadius: BorderRadius['2xl'],
+        borderWidth: 1,
+        borderColor: Colors.borderSecondary,
     },
-    demoLinkText: {
-        fontSize: FontSizes.sm,
-        color: Colors.textMuted,
-        textDecorationLine: 'underline',
-    },
-    debugText: {
-        fontSize: FontSizes.xs,
-        color: Colors.textMuted,
-        textAlign: 'center',
-        textDecorationLine: 'underline',
+    demoButtonText: {
+        fontSize: FontSizes.base,
+        fontWeight: '500',
+        color: Colors.textSecondary,
     },
 });

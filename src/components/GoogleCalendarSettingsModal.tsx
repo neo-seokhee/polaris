@@ -42,13 +42,13 @@ export function GoogleCalendarSettingsModal({
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm('Google Calendar 연결을 해제하시겠습니까?\n\n모든 캘린더 데이터가 삭제됩니다.')) {
+            if (window.confirm('Google Calendar 연결을 해제할까요?\n\n모든 캘린더 데이터가 삭제됩니다.')) {
                 confirmDisconnect();
             }
         } else {
             Alert.alert(
                 '연결 해제',
-                'Google Calendar 연결을 해제하시겠습니까?\n\n모든 캘린더 데이터가 삭제됩니다.',
+                'Google Calendar 연결을 해제할까요?\n\n모든 캘린더 데이터가 삭제됩니다.',
                 [
                     { text: '취소', style: 'cancel' },
                     { text: '연결 해제', style: 'destructive', onPress: confirmDisconnect },

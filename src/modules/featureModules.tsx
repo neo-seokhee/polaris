@@ -1,13 +1,14 @@
-import { ListChecks, Target, StickyNote, Wallet, Repeat, Clapperboard } from "lucide-react-native";
+import { ListChecks, Target, StickyNote, CalendarDays, Wallet, Repeat, Clapperboard } from "lucide-react-native";
 import { HomeScreen } from "@/app/(tabs)/index";
 import { GoalsScreen } from "@/app/(tabs)/goals";
 import { MemoScreen } from "@/app/(tabs)/memo";
+import ScheduleScreen from "@/app/(tabs)/schedule";
 import { BudgetModuleScreen } from "@/modules/screens/BudgetModuleScreen";
 import { HabitsModuleScreen } from "@/modules/screens/HabitsModuleScreen";
 import { SettlementModuleScreen } from "@/modules/screens/SettlementModuleScreen";
 import type { FeatureModuleDefinition, FeatureModuleId, ShortcutConfig } from "@/modules/types";
 
-export const DEFAULT_ENABLED_MODULES: FeatureModuleId[] = ["todo", "goals", "memo", "settlement", "budget", "habits"];
+export const DEFAULT_ENABLED_MODULES: FeatureModuleId[] = ["todo", "goals", "memo", "schedule", "settlement", "budget", "habits"];
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   slot1: "todo",
   slot2: "goals",
@@ -40,6 +41,14 @@ export const FEATURE_MODULES: FeatureModuleDefinition[] = [
     description: "카테고리별 메모를 기록하고 빠르게 검색합니다.",
     icon: StickyNote,
     component: MemoScreen,
+  },
+  {
+    id: "schedule",
+    title: "일정",
+    tabLabel: "일정",
+    description: "일정을 관리하고 캘린더와 연동합니다.",
+    icon: CalendarDays,
+    component: ScheduleScreen,
   },
   {
     id: "settlement",

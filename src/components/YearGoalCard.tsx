@@ -104,7 +104,7 @@ export function YearGoalCard({ year, content, isLoading, onSave }: YearGoalCardP
                         <div
                             style={{
                                 color: '#FFFFFF',
-                                fontSize: 12,
+                                fontSize: 14,
                                 lineHeight: '22px',
                             }}
                             dangerouslySetInnerHTML={{ __html: content }}
@@ -118,7 +118,7 @@ export function YearGoalCard({ year, content, isLoading, onSave }: YearGoalCardP
                             tagsStyles={{
                                 body: {
                                     color: '#FFFFFF',
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     lineHeight: 22,
                                     margin: 0,
                                     padding: 0,
@@ -172,7 +172,7 @@ export function YearGoalCard({ year, content, isLoading, onSave }: YearGoalCardP
                                 },
                                 li: {
                                     marginVertical: 2,
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     lineHeight: 22,
                                     color: '#FFFFFF',
                                 },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
     },
     textInput: {
-        fontSize: 12,
+        fontSize: 14,
         color: '#FFFFFF',
         lineHeight: 22,
         minHeight: 80,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
         padding: 0,
     },
     contentText: {
-        fontSize: 12,
+        fontSize: 14,
         color: '#FFFFFF',
         lineHeight: 22,
     },

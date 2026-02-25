@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAnalytics } from "@/contexts/AnalyticsContext";
+import { useEntitlements } from "@/contexts/EntitlementsContext";
+import { supabase } from "@/lib/supabase";
 import {
   DEFAULT_ENABLED_MODULES,
   DEFAULT_SHORTCUTS,
@@ -18,6 +20,7 @@ interface FeatureModulesContextValue {
   shortcuts: ShortcutConfig;
   recentModules: FeatureModuleId[];
   modules: typeof FEATURE_MODULES;
+  lockedModules: Set<FeatureModuleId>;
   toggleModule: (id: FeatureModuleId, enabled: boolean) => { ok: boolean; reason?: string };
   setShortcut: (slot: ShortcutSlot, moduleId: FeatureModuleId) => void;
   moveShortcut: (slot: ShortcutSlot, direction: "left" | "right") => void;
@@ -91,60 +94,165 @@ function normalizeRecent(raw: unknown): FeatureModuleId[] {
   return unique.filter((id): id is FeatureModuleId => isFeatureModuleId(id));
 }
 
+interface PersistedData {
+  enabledModules: FeatureModuleId[];
+  shortcuts: ShortcutConfig;
+  recentModules: FeatureModuleId[];
+}
+
 export function FeatureModulesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const { track } = useAnalytics();
+  const { entitlements, canAccessModule } = useEntitlements();
   const storageKey = useMemo(() => `feature-modules:v1:${user?.id ?? "guest"}`, [user?.id]);
   const [ready, setReady] = useState(false);
   const [enabledModules, setEnabledModules] = useState<FeatureModuleId[]>(DEFAULT_ENABLED_MODULES);
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>(DEFAULT_SHORTCUTS);
   const [recentModules, setRecentModules] = useState<FeatureModuleId[]>([]);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLoadingRef = useRef(true);
 
+  // --- Compute hidden modules from entitlements ---
+  const hiddenModules = useMemo(() => {
+    const hidden = new Set<FeatureModuleId>();
+    if (!entitlements) return hidden;
+
+    // default_visibility from plan
+    for (const [moduleId, visible] of Object.entries(entitlements.default_visibility || {})) {
+      if (visible === false && isFeatureModuleId(moduleId)) {
+        hidden.add(moduleId);
+      }
+    }
+
+    // visibility:* overrides (RPC merges plan features + overrides)
+    for (const [key, value] of Object.entries(entitlements)) {
+      if (key.startsWith('visibility:')) {
+        const moduleId = key.replace('visibility:', '');
+        if (isFeatureModuleId(moduleId)) {
+          if (value === false) hidden.add(moduleId);
+          else hidden.delete(moduleId);
+        }
+      }
+    }
+
+    return hidden;
+  }, [entitlements]);
+
+  // --- Compute locked modules (visible but plan doesn't include) ---
+  const lockedModules = useMemo(() => {
+    const locked = new Set<FeatureModuleId>();
+    for (const m of FEATURE_MODULES) {
+      if (!hiddenModules.has(m.id) && !canAccessModule(m.id)) {
+        locked.add(m.id);
+      }
+    }
+    return locked;
+  }, [hiddenModules, canAccessModule]);
+
+  // --- Load: Supabase first, fallback to AsyncStorage ---
   useEffect(() => {
     let mounted = true;
+    isLoadingRef.current = true;
 
     void (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(storageKey);
-        if (!mounted) return;
-        if (!raw) {
-          setReady(true);
-          return;
+      let data: PersistedData | null = null;
+
+      // 1) Try Supabase (cloud source of truth)
+      if (user?.id) {
+        try {
+          const settingsRes = await supabase
+            .from("user_settings")
+            .select("feature_modules")
+            .eq("user_id", user.id)
+            .single();
+
+          if (settingsRes.data?.feature_modules && typeof settingsRes.data.feature_modules === "object") {
+            const cloud = settingsRes.data.feature_modules as Record<string, unknown>;
+            data = {
+              enabledModules: normalizeEnabled(cloud.enabledModules),
+              shortcuts: normalizeShortcuts(cloud.shortcuts, normalizeEnabled(cloud.enabledModules)),
+              recentModules: normalizeRecent(cloud.recentModules),
+            };
+          }
+        } catch {
+          // Supabase unavailable, fall through to local
         }
-        const parsed = JSON.parse(raw) as {
-          enabledModules?: unknown;
-          shortcuts?: unknown;
-          recentModules?: unknown;
-        };
-        const normalizedEnabled = normalizeEnabled(parsed.enabledModules);
-        const normalizedShortcuts = normalizeShortcuts(parsed.shortcuts, normalizedEnabled);
-        const normalizedRecent = normalizeRecent(parsed.recentModules);
-        setEnabledModules(normalizedEnabled);
-        setShortcuts(normalizedShortcuts);
-        setRecentModules(normalizedRecent);
-      } catch {
-        setEnabledModules(DEFAULT_ENABLED_MODULES);
-        setShortcuts(DEFAULT_SHORTCUTS);
-        setRecentModules([]);
-      } finally {
-        if (mounted) setReady(true);
       }
+
+      // 2) Fallback to AsyncStorage (local cache / offline)
+      if (!data) {
+        try {
+          const raw = await AsyncStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as Record<string, unknown>;
+            data = {
+              enabledModules: normalizeEnabled(parsed.enabledModules),
+              shortcuts: normalizeShortcuts(parsed.shortcuts, normalizeEnabled(parsed.enabledModules)),
+              recentModules: normalizeRecent(parsed.recentModules),
+            };
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 3) If we loaded from local but user is logged in, push local → cloud (migration)
+      if (data && user?.id) {
+        const { data: existing } = await supabase
+          .from("user_settings")
+          .select("user_id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (!existing) {
+          void supabase.from("user_settings").upsert({
+            user_id: user.id,
+            feature_modules: data,
+          });
+        }
+      }
+
+      if (!mounted) return;
+
+      if (data) {
+        setEnabledModules(data.enabledModules);
+        setShortcuts(data.shortcuts);
+        setRecentModules(data.recentModules);
+      }
+
+      isLoadingRef.current = false;
+      setReady(true);
     })();
 
-    return () => {
-      mounted = false;
-    };
-  }, [storageKey]);
+    return () => { mounted = false; };
+  }, [storageKey, user?.id]);
 
+  // --- Save: debounce → AsyncStorage + Supabase ---
   useEffect(() => {
-    if (!ready) return;
-    const payload = JSON.stringify({
-      enabledModules,
-      shortcuts,
-      recentModules,
-    });
-    void AsyncStorage.setItem(storageKey, payload);
-  }, [ready, enabledModules, shortcuts, recentModules, storageKey]);
+    if (!ready || isLoadingRef.current) return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+    saveTimerRef.current = setTimeout(() => {
+      const payload = { enabledModules, shortcuts, recentModules };
+      const json = JSON.stringify(payload);
+
+      // Local cache
+      void AsyncStorage.setItem(storageKey, json);
+
+      // Cloud sync
+      if (user?.id) {
+        void supabase.from("user_settings").upsert({
+          user_id: user.id,
+          feature_modules: payload,
+        });
+      }
+    }, 500);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [ready, enabledModules, shortcuts, recentModules, storageKey, user?.id]);
 
   const toggleModule = useCallback(
     (id: FeatureModuleId, enabled: boolean) => {
@@ -157,7 +265,7 @@ export function FeatureModulesProvider({ children }: { children: ReactNode }) {
 
       if (!enabledModules.includes(id)) return { ok: true };
       if (enabledModules.length <= 3) {
-        return { ok: false, reason: "바로가기 1·2·4 슬롯을 채우려면 최소 3개 모듈이 필요합니다." };
+        return { ok: false, reason: "바로가기 1·2·4 슬롯을 채우려면 최소 3개 모듈이 필요해요." };
       }
 
       const nextEnabled = enabledModules.filter((moduleId) => moduleId !== id);
@@ -220,20 +328,26 @@ export function FeatureModulesProvider({ children }: { children: ReactNode }) {
     track("feature_modules_restored_defaults");
   }, [track]);
 
+  const visibleModules = useMemo(
+    () => FEATURE_MODULES.filter((m) => !hiddenModules.has(m.id)),
+    [hiddenModules]
+  );
+
   const value = useMemo<FeatureModulesContextValue>(
     () => ({
       ready,
       enabledModules,
       shortcuts,
       recentModules,
-      modules: FEATURE_MODULES,
+      modules: visibleModules,
+      lockedModules,
       toggleModule,
       setShortcut,
       moveShortcut,
       recordModuleUsage,
       restoreDefaults,
     }),
-    [ready, enabledModules, shortcuts, recentModules, toggleModule, setShortcut, moveShortcut, recordModuleUsage, restoreDefaults]
+    [ready, enabledModules, shortcuts, recentModules, visibleModules, lockedModules, toggleModule, setShortcut, moveShortcut, recordModuleUsage, restoreDefaults]
   );
 
   return <FeatureModulesContext.Provider value={value}>{children}</FeatureModulesContext.Provider>;

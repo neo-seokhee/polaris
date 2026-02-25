@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.bgTertiary,
         borderRadius: BorderRadius.lg,
         padding: Spacing['2xl'],
-        fontSize: 12,
+        fontSize: 14,
         color: '#FFFFFF',
         minHeight: 150,
         textAlignVertical: 'top',

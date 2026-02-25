@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 interface GeminiPart {
   text?: string;
 }
@@ -61,45 +63,21 @@ function normalizeResponse(parsed: any): CompassAIResponse {
 }
 
 export async function requestGeminiCompass(params: {
-  apiKey: string;
   systemInstruction: string;
   userPrompt: string;
 }): Promise<CompassAIResponse> {
-  const { apiKey, systemInstruction, userPrompt } = params;
+  const { systemInstruction, userPrompt } = params;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: systemInstruction }],
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: userPrompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          topP: 0.9,
-          maxOutputTokens: 1024,
-        },
-      }),
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+    body: { systemInstruction, userPrompt },
+  });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Gemini API Error (${response.status}): ${text}`);
+  if (error) {
+    throw new Error(`Gemini proxy error: ${error.message}`);
   }
 
-  const data = (await response.json()) as GeminiResponse;
-  const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("\n").trim();
+  const geminiData = data as GeminiResponse;
+  const rawText = geminiData?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("\n").trim();
 
   if (!rawText) {
     throw new Error("Gemini response is empty");
@@ -116,4 +94,3 @@ export async function requestGeminiCompass(params: {
     return normalizeResponse({ message: rawText, suggestedTodos: [] });
   }
 }
-

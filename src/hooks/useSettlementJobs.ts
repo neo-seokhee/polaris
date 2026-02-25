@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNetwork } from "@/contexts/NetworkContext";
 import { useAnalytics } from "@/contexts/AnalyticsContext";
 import { notifySlack } from "@/lib/slackNotify";
+import { writeCache, readCache } from "@/lib/offlineCache";
+import { enqueue } from "@/lib/syncQueue";
 import type { Database } from "@/lib/database.types";
 import { addMonthsISO } from "@/lib/settlement";
 
@@ -141,8 +144,11 @@ const DEMO_SETTLEMENTS: SettlementJob[] = [
   },
 ];
 
+const TABLE = "settlement_jobs";
+
 export function useSettlementJobs() {
   const { user, isDemoMode } = useAuth();
+  const { isOnline, syncVersion } = useNetwork();
   const { track } = useAnalytics();
   const [jobs, setJobs] = useState<SettlementJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,25 +164,35 @@ export function useSettlementJobs() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("settlement_jobs")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      const normalized = (data || []).map(normalizeJob);
-      setJobs(normalized);
-      track("settlement_jobs_loaded", { count: normalized.length });
+      if (isOnline) {
+        const { data, error } = await supabase
+          .from(TABLE)
+          .select("*")
+          .eq("user_id", user.id)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        const normalized = (data || []).map(normalizeJob);
+        setJobs(normalized);
+        writeCache(user.id, TABLE, data || []);
+        track("settlement_jobs_loaded", { count: normalized.length });
+      } else {
+        const cached = await readCache<SettlementJob[]>(user.id, TABLE);
+        const normalized = (cached || []).map(normalizeJob);
+        setJobs(normalized);
+      }
     } catch (err: any) {
       const message = err.message || "정산 데이터를 불러오지 못했습니다.";
       setError(message);
+      const cached = await readCache<SettlementJob[]>(user.id, TABLE);
+      if (cached) setJobs(cached.map(normalizeJob));
       track("settlement_jobs_load_failed");
     } finally {
       setLoading(false);
     }
-  }, [isDemoMode, user, track]);
+  }, [isDemoMode, user, isOnline, track]);
 
   const nextSortOrder = useMemo(() => {
     const max = jobs.reduce((acc, job) => Math.max(acc, job.sort_order ?? 0), 0);
@@ -188,254 +204,296 @@ export function useSettlementJobs() {
       if (isDemoMode) return { demoBlocked: true, error: null as string | null };
       if (!user) return { error: "User not authenticated" };
 
-      try {
-        const status = payload.status ?? "before_work";
-        const jobType = payload.jobType ?? "shoot_edit";
-        const shootDate = payload.shootDate?.trim() || null;
-        const editDate = payload.editDate?.trim() || null;
-        const deliveryDate = payload.deliveryDate?.trim() || null;
-        const paymentDueDate = payload.paymentDueDate?.trim() || null;
-        const paidAtDate = payload.paidAtDate?.trim() || null;
-        const shootDone = Boolean(payload.shootDone);
-        const editDone = Boolean(payload.editDone);
-        const deliveryDone = Boolean(payload.deliveryDone);
-        const isPaid = status === "paid";
+      const status = payload.status ?? "before_work";
+      const jobType = payload.jobType ?? "shoot_edit";
+      const shootDate = payload.shootDate?.trim() || null;
+      const editDate = payload.editDate?.trim() || null;
+      const deliveryDate = payload.deliveryDate?.trim() || null;
+      const paymentDueDate = payload.paymentDueDate?.trim() || null;
+      const paidAtDate = payload.paidAtDate?.trim() || null;
+      const shootDone = Boolean(payload.shootDone);
+      const editDone = Boolean(payload.editDone);
+      const deliveryDone = Boolean(payload.deliveryDone);
+      const isPaid = status === "paid";
 
-        const insertWithStatus = async (dbStatus: string, includeJobType: boolean) => {
-          const insertData: SettlementInsert = {
+      if (isOnline) {
+        try {
+          const insertWithStatus = async (dbStatus: string, includeJobType: boolean) => {
+            const insertData: SettlementInsert = {
+              user_id: user.id,
+              title: payload.title,
+              client: payload.client ?? null,
+              unit_price: Math.max(0, Math.round(payload.unitPrice)),
+              work_date: shootDate,
+              edit_date: editDate,
+              delivery_date: deliveryDate,
+              payment_due_date: paymentDueDate,
+              status: dbStatus as SettlementInsert["status"],
+              shoot_done: shootDone,
+              edit_done: editDone,
+              delivery_done: deliveryDone,
+              is_paid: isPaid,
+              paid_at: isPaid ? (paidAtDate || new Date().toISOString().slice(0, 10)) : null,
+              sort_order: nextSortOrder,
+            };
+            if (includeJobType) {
+              insertData.job_type = jobType;
+            }
+            return supabase.from(TABLE).insert(insertData).select("*").single();
+          };
+
+          let includeJobType = true;
+          let { data, error } = await insertWithStatus(status, includeJobType);
+
+          if (error && includeJobType && isMissingJobTypeColumnError(error)) {
+            includeJobType = false;
+            const fallback = await insertWithStatus(status, includeJobType);
+            data = fallback.data;
+            error = fallback.error;
+          }
+
+          if (error && isStatusConstraintError(error)) {
+            const legacyStatus = toLegacyStatus(status);
+            if (legacyStatus !== status) {
+              const fallback = await insertWithStatus(legacyStatus, includeJobType);
+              data = fallback.data;
+              error = fallback.error;
+              if (error && includeJobType && isMissingJobTypeColumnError(error)) {
+                includeJobType = false;
+                const legacyFb = await insertWithStatus(legacyStatus, includeJobType);
+                data = legacyFb.data;
+                error = legacyFb.error;
+              }
+            }
+          }
+
+          if (error) throw error;
+          const normalized = normalizeJob(data as SettlementJob);
+          setJobs((prev) => [...prev, normalized]);
+          track("settlement_job_created", {
+            status: normalized.status,
+            has_client: Boolean(normalized.client),
+            job_type: normalized.job_type,
+            unit_price: normalized.unit_price,
+          });
+          notifySlack(
+            "settlement_job_created",
+            { userId: user.id },
+            `${normalized.title} · ${normalized.client || "거래처 미지정"} · ${normalized.unit_price.toLocaleString("ko-KR")}원 · ${normalized.status}`
+          );
+          return { data: normalized, error: null as string | null };
+        } catch (err: any) {
+          const message = err.message || "정산 작업 생성에 실패했습니다.";
+          setError(message);
+          track("settlement_job_create_failed");
+          return { error: message };
+        }
+      } else {
+        // 오프라인
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const optimistic: SettlementJob = {
+          id: tempId,
+          user_id: user.id,
+          title: payload.title,
+          client: payload.client ?? null,
+          job_type: jobType,
+          work_date: shootDate,
+          edit_date: editDate,
+          delivery_date: deliveryDate,
+          unit_price: Math.max(0, Math.round(payload.unitPrice)),
+          payment_due_date: paymentDueDate,
+          status,
+          shoot_done: shootDone,
+          edit_done: editDone,
+          delivery_done: deliveryDone,
+          is_paid: isPaid,
+          paid_at: isPaid ? (paidAtDate || new Date().toISOString().slice(0, 10)) : null,
+          sort_order: nextSortOrder,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        setJobs((prev) => [...prev, normalizeJob(optimistic)]);
+        await enqueue(user.id, {
+          table: TABLE,
+          type: "insert",
+          rowId: tempId,
+          data: {
             user_id: user.id,
             title: payload.title,
             client: payload.client ?? null,
+            job_type: jobType,
             unit_price: Math.max(0, Math.round(payload.unitPrice)),
             work_date: shootDate,
             edit_date: editDate,
             delivery_date: deliveryDate,
             payment_due_date: paymentDueDate,
-            status: dbStatus as SettlementInsert["status"],
+            status,
             shoot_done: shootDone,
             edit_done: editDone,
             delivery_done: deliveryDone,
             is_paid: isPaid,
             paid_at: isPaid ? (paidAtDate || new Date().toISOString().slice(0, 10)) : null,
             sort_order: nextSortOrder,
-          };
-          if (includeJobType) {
-            insertData.job_type = jobType;
-          }
-
-          return supabase
-            .from("settlement_jobs")
-            .insert(insertData)
-            .select("*")
-            .single();
-        };
-
-        let includeJobType = true;
-        let { data, error } = await insertWithStatus(status, includeJobType);
-
-        if (error && includeJobType && isMissingJobTypeColumnError(error)) {
-          includeJobType = false;
-          const fallbackWithoutJobType = await insertWithStatus(status, includeJobType);
-          data = fallbackWithoutJobType.data;
-          error = fallbackWithoutJobType.error;
-        }
-
-        if (error && isStatusConstraintError(error)) {
-          const legacyStatus = toLegacyStatus(status);
-          if (legacyStatus !== status) {
-            const fallbackResult = await insertWithStatus(legacyStatus, includeJobType);
-            data = fallbackResult.data;
-            error = fallbackResult.error;
-            if (error && includeJobType && isMissingJobTypeColumnError(error)) {
-              includeJobType = false;
-              const legacyWithoutJobType = await insertWithStatus(legacyStatus, includeJobType);
-              data = legacyWithoutJobType.data;
-              error = legacyWithoutJobType.error;
-            }
-          }
-        }
-
-        if (error) throw error;
-        const normalized = normalizeJob(data as SettlementJob);
-        setJobs((prev) => [...prev, normalized]);
-        track("settlement_job_created", {
-          status: normalized.status,
-          has_client: Boolean(normalized.client),
-          job_type: normalized.job_type,
-          unit_price: normalized.unit_price,
-          is_paid: normalized.is_paid,
-          has_shoot_date: Boolean(normalized.work_date),
-          has_edit_date: Boolean((normalized as any).edit_date),
-          has_delivery_date: Boolean(normalized.delivery_date),
+          },
         });
-        notifySlack(
-          "settlement_job_created",
-          { userId: user.id },
-          `${normalized.title} · ${normalized.client || "거래처 미지정"} · ${normalized.unit_price.toLocaleString("ko-KR")}원 · ${normalized.status}`
-        );
-        return { data: normalized, error: null as string | null };
-      } catch (err: any) {
-        const message = err.message || "정산 작업 생성에 실패했습니다.";
-        setError(message);
-        track("settlement_job_create_failed");
-        return { error: message };
+        track("settlement_job_created");
+        return { data: normalizeJob(optimistic), error: null as string | null };
       }
     },
-    [isDemoMode, user, nextSortOrder, track]
+    [isDemoMode, user, nextSortOrder, track, isOnline]
   );
 
   const updateJob = useCallback(async (id: string, updates: SettlementUpdate) => {
     if (isDemoMode) return { demoBlocked: true, error: null as string | null };
-    try {
-      const prevJob = jobs.find((job) => job.id === id);
-      let patch = updates;
-      let { error } = await supabase.from("settlement_jobs").update(patch).eq("id", id);
 
-      if (
-        error &&
-        Object.prototype.hasOwnProperty.call(updates, "job_type") &&
-        isMissingJobTypeColumnError(error)
-      ) {
-        const rest = { ...(updates as SettlementUpdate & { job_type?: SettlementJobType }) };
-        delete rest.job_type;
-        patch = rest as SettlementUpdate;
-        const retry = await supabase.from("settlement_jobs").update(patch).eq("id", id);
-        error = retry.error;
+    const prevJob = jobs.find((job) => job.id === id);
+
+    // Optimistic
+    setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, ...updates } : job)));
+
+    if (isOnline) {
+      try {
+        let patch = updates;
+        let { error } = await supabase.from(TABLE).update(patch).eq("id", id);
+
+        if (
+          error &&
+          Object.prototype.hasOwnProperty.call(updates, "job_type") &&
+          isMissingJobTypeColumnError(error)
+        ) {
+          const rest = { ...(updates as SettlementUpdate & { job_type?: SettlementJobType }) };
+          delete rest.job_type;
+          patch = rest as SettlementUpdate;
+          const retry = await supabase.from(TABLE).update(patch).eq("id", id);
+          error = retry.error;
+        }
+
+        if (error) throw error;
+        track("settlement_job_updated");
+        const nextStatus = typeof updates.status === "string" ? (updates.status as SettlementStatus) : null;
+        if (nextStatus && prevJob && prevJob.status !== nextStatus && user?.id) {
+          notifySlack("settlement_job_status_changed", { userId: user.id }, `${prevJob.title} · ${prevJob.status} → ${nextStatus}`);
+        }
+        return { error: null as string | null };
+      } catch (err: any) {
+        const message = err.message || "정산 작업 수정에 실패했습니다.";
+        setError(message);
+        return { error: message };
       }
-
-      if (error) throw error;
-
-      setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, ...updates } : job)));
-      track("settlement_job_updated", {
-        has_title: typeof updates.title === "string",
-        has_client: Object.prototype.hasOwnProperty.call(updates, "client"),
-        has_dates:
-          Object.prototype.hasOwnProperty.call(updates, "work_date") ||
-          Object.prototype.hasOwnProperty.call(updates, "edit_date") ||
-          Object.prototype.hasOwnProperty.call(updates, "delivery_date") ||
-          Object.prototype.hasOwnProperty.call(updates, "payment_due_date"),
-        has_price: Object.prototype.hasOwnProperty.call(updates, "unit_price"),
-        has_status: Object.prototype.hasOwnProperty.call(updates, "status"),
+    } else {
+      await enqueue(user!.id, {
+        table: TABLE,
+        type: "update",
+        rowId: id,
+        data: updates as unknown as Record<string, unknown>,
       });
-      const nextStatus = typeof updates.status === "string" ? (updates.status as SettlementStatus) : null;
-      if (nextStatus && prevJob && prevJob.status !== nextStatus && user?.id) {
-        notifySlack(
-          "settlement_job_status_changed",
-          { userId: user.id },
-          `${prevJob.title} · ${prevJob.status} → ${nextStatus}`
-        );
-      }
+      track("settlement_job_updated");
       return { error: null as string | null };
-    } catch (err: any) {
-      const message = err.message || "정산 작업 수정에 실패했습니다.";
-      setError(message);
-      track("settlement_job_update_failed");
-      return { error: message };
     }
-  }, [isDemoMode, jobs, track, user]);
+  }, [isDemoMode, jobs, track, user, isOnline]);
 
   const moveStatus = useCallback(async (id: string, status: SettlementStatus) => {
     if (isDemoMode) return { demoBlocked: true, error: null as string | null };
 
     const prevJob = jobs.find((job) => job.id === id);
     const paidAt = status === "paid" ? new Date().toISOString().slice(0, 10) : null;
-    const patchLocal = () => {
-      setJobs((prev) =>
-        prev.map((job) =>
-          job.id === id
-            ? {
-                ...job,
-                status,
-                is_paid: status === "paid",
-                paid_at: paidAt,
-              }
-            : job
-        )
-      );
-    };
 
-    const updateWithStatus = async (dbStatus: string) => {
-      return supabase
-        .from("settlement_jobs")
-        .update({
-          status: dbStatus as SettlementUpdate["status"],
-          is_paid: status === "paid",
-          paid_at: paidAt,
-        })
-        .eq("id", id);
-    };
+    // Optimistic
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.id === id ? { ...job, status, is_paid: status === "paid", paid_at: paidAt } : job
+      )
+    );
 
-    try {
-      let { error } = await updateWithStatus(status);
-      if (error && isStatusConstraintError(error)) {
-        const legacyStatus = toLegacyStatus(status);
-        if (legacyStatus !== status) {
-          const fallbackResult = await updateWithStatus(legacyStatus);
-          error = fallbackResult.error;
+    if (isOnline) {
+      const updateWithStatus = async (dbStatus: string) => {
+        return supabase.from(TABLE).update({ status: dbStatus as SettlementUpdate["status"], is_paid: status === "paid", paid_at: paidAt }).eq("id", id);
+      };
+
+      try {
+        let { error } = await updateWithStatus(status);
+        if (error && isStatusConstraintError(error)) {
+          const legacyStatus = toLegacyStatus(status);
+          if (legacyStatus !== status) {
+            const fallback = await updateWithStatus(legacyStatus);
+            error = fallback.error;
+          }
         }
+        if (error) throw error;
+        track("settlement_job_status_changed", { status });
+        if (prevJob && prevJob.status !== status && user?.id) {
+          notifySlack("settlement_job_status_changed", { userId: user.id }, `${prevJob.title} · ${prevJob.status} → ${status}`);
+        }
+        return { error: null as string | null };
+      } catch (err: any) {
+        const message = err.message || "상태 변경에 실패했습니다.";
+        setError(message);
+        return { error: message };
       }
-
-      if (error) throw error;
-      patchLocal();
+    } else {
+      await enqueue(user!.id, {
+        table: TABLE,
+        type: "update",
+        rowId: id,
+        data: { status, is_paid: status === "paid", paid_at: paidAt },
+      });
       track("settlement_job_status_changed", { status });
-      if (prevJob && prevJob.status !== status && user?.id) {
-        notifySlack(
-          "settlement_job_status_changed",
-          { userId: user.id },
-          `${prevJob.title} · ${prevJob.status} → ${status}`
-        );
-      }
       return { error: null as string | null };
-    } catch (err: any) {
-      const message = err.message || "상태 변경에 실패했습니다.";
-      setError(message);
-      track("settlement_job_status_change_failed");
-      return { error: message };
     }
-  }, [isDemoMode, jobs, track, user]);
+  }, [isDemoMode, jobs, track, user, isOnline]);
 
   const reorderByStatus = useCallback(async (status: SettlementStatus, orderedIds: string[]) => {
     if (isDemoMode) return { demoBlocked: true, error: null as string | null };
-    try {
-      const updateMany = async (dbStatus: string) => {
-        return Promise.all(
-          orderedIds.map((id, index) =>
-            supabase
-              .from("settlement_jobs")
-              .update({ sort_order: index, status: dbStatus as SettlementUpdate["status"] })
-              .eq("id", id)
-          )
-        );
-      };
 
-      let results = await updateMany(status);
-      let firstError = results.find((result) => !!result.error)?.error;
-      if (firstError && isStatusConstraintError(firstError)) {
-        const legacyStatus = toLegacyStatus(status);
-        if (legacyStatus !== status) {
-          results = await updateMany(legacyStatus);
-          firstError = results.find((result) => !!result.error)?.error;
+    // Optimistic
+    setJobs((prev) =>
+      prev.map((job) => {
+        const index = orderedIds.indexOf(job.id);
+        if (index < 0) return job;
+        return { ...job, sort_order: index, status };
+      })
+    );
+
+    if (isOnline) {
+      try {
+        const updateMany = async (dbStatus: string) => {
+          return Promise.all(
+            orderedIds.map((id, index) =>
+              supabase.from(TABLE).update({ sort_order: index, status: dbStatus as SettlementUpdate["status"] }).eq("id", id)
+            )
+          );
+        };
+
+        let results = await updateMany(status);
+        let firstError = results.find((r) => !!r.error)?.error;
+        if (firstError && isStatusConstraintError(firstError)) {
+          const legacyStatus = toLegacyStatus(status);
+          if (legacyStatus !== status) {
+            results = await updateMany(legacyStatus);
+            firstError = results.find((r) => !!r.error)?.error;
+          }
         }
+        if (firstError) throw firstError;
+        track("settlement_jobs_reordered", { status, count: orderedIds.length });
+        return { error: null as string | null };
+      } catch (err: any) {
+        const message = err.message || "정렬 저장에 실패했습니다.";
+        setError(message);
+        return { error: message };
       }
-
-      if (firstError) throw firstError;
-
-      setJobs((prev) =>
-        prev.map((job) => {
-          const index = orderedIds.indexOf(job.id);
-          if (index < 0) return job;
-          return { ...job, sort_order: index, status };
-        })
-      );
+    } else {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await enqueue(user!.id, {
+          table: TABLE,
+          type: "update",
+          rowId: orderedIds[i],
+          data: { sort_order: i, status },
+        });
+      }
       track("settlement_jobs_reordered", { status, count: orderedIds.length });
       return { error: null as string | null };
-    } catch (err: any) {
-      const message = err.message || "정렬 저장에 실패했습니다.";
-      setError(message);
-      track("settlement_jobs_reorder_failed", { status, count: orderedIds.length });
-      return { error: message };
     }
-  }, [isDemoMode, track]);
+  }, [isDemoMode, track, user, isOnline]);
 
   const duplicateNextMonth = useCallback(async (id: string) => {
     const source = jobs.find((job) => job.id === id);
@@ -463,19 +521,30 @@ export function useSettlementJobs() {
 
   const deleteJob = useCallback(async (id: string) => {
     if (isDemoMode) return { demoBlocked: true, error: null as string | null };
-    try {
-      const { error } = await supabase.from("settlement_jobs").delete().eq("id", id);
-      if (error) throw error;
-      setJobs((prev) => prev.filter((job) => job.id !== id));
+
+    setJobs((prev) => prev.filter((job) => job.id !== id));
+
+    if (isOnline) {
+      try {
+        const { error } = await supabase.from(TABLE).delete().eq("id", id);
+        if (error) throw error;
+        track("settlement_job_deleted");
+        return { error: null as string | null };
+      } catch (err: any) {
+        const message = err.message || "삭제에 실패했습니다.";
+        setError(message);
+        return { error: message };
+      }
+    } else {
+      await enqueue(user!.id, {
+        table: TABLE,
+        type: "delete",
+        rowId: id,
+      });
       track("settlement_job_deleted");
       return { error: null as string | null };
-    } catch (err: any) {
-      const message = err.message || "삭제에 실패했습니다.";
-      setError(message);
-      track("settlement_job_delete_failed");
-      return { error: message };
     }
-  }, [isDemoMode, track]);
+  }, [isDemoMode, track, user, isOnline]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -486,6 +555,8 @@ export function useSettlementJobs() {
     if (!user) return;
 
     fetchJobs();
+
+    if (!isOnline) return;
 
     const channel = supabase
       .channel("public:settlement_jobs")
@@ -515,7 +586,7 @@ export function useSettlementJobs() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isDemoMode, user, fetchJobs]);
+  }, [isDemoMode, user, fetchJobs, isOnline, syncVersion]);
 
   return {
     jobs,

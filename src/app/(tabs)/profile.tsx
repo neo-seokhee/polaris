@@ -5,14 +5,15 @@ import { router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { supabase } from "@/lib/supabase";
-import { Settings, MessageSquare, Info, ChevronRight, LayoutGrid, Plus } from "lucide-react-native";
+import { Settings, MessageSquare, Info, ChevronRight, LayoutGrid, Plus, Crown } from "lucide-react-native";
 import { KakaoIcon, AppleIcon } from "@/components/SocialIcons";
 import { Colors, Spacing, FontSizes, BorderRadius } from "@/constants/theme";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { SHORTCUT_SLOTS } from "@/modules/featureModules";
 import { MODULE_CATALOG, MODULE_CATALOG_MAP } from "@/modules/moduleCatalog";
 import { useFeatureModules } from "@/contexts/FeatureModulesContext";
+import { useEntitlements } from "@/contexts/EntitlementsContext";
 
 interface MenuItemProps {
     icon: React.ReactNode;
@@ -44,7 +45,8 @@ export default function ProfileScreen() {
     useScreenTracking('screen_profile');
 
     const { user, signOut, signInWithKakao, signInWithApple, isKakaoAvailable, isAppleAvailable, isDemoMode, exitDemoMode } = useAuth();
-    const { shortcuts, recentModules } = useFeatureModules();
+    const { shortcuts, recentModules, modules: visibleModules } = useFeatureModules();
+    const { canAccessModule } = useEntitlements();
     const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
     const [userPhone, setUserPhone] = useState<string | null>(null);
 
@@ -55,8 +57,7 @@ export default function ProfileScreen() {
                 .select('phone')
                 .eq('id', user.id)
                 .single()
-                .then(({ data, error }) => {
-                    console.log('[Profile] Fetched phone:', data?.phone, 'error:', error?.message);
+                .then(({ data }) => {
                     setUserPhone(data?.phone || null);
                 });
         }
@@ -78,7 +79,7 @@ export default function ProfileScreen() {
             signOut();
         } else if (isKakaoAvailable) {
             const { error } = await signInWithKakao();
-            if (error && error.message !== '로그인이 취소되었습니다.') {
+            if (error && error.message !== '로그인이 취소됐어요.') {
                 showAlert('카카오 로그인 실패', error.message);
             }
         } else {
@@ -91,6 +92,12 @@ export default function ProfileScreen() {
     const isLoggedIn = !isDemoMode && user;
     const showComingSoon = () => showAlert('준비중', '아직 준비중인 기능입니다.');
 
+    // Build a set of visible module IDs for filtering catalog items
+    const visibleModuleIds = useMemo(
+        () => new Set(visibleModules.map((m) => m.id)),
+        [visibleModules]
+    );
+
     const moduleTiles = useMemo<ModuleTileItem[]>(() => {
         const shortcutKeys = SHORTCUT_SLOTS.map((slot) => shortcuts[slot]);
         const prioritizedKeys = [...shortcutKeys, ...recentModules, ...MODULE_CATALOG.map((item) => item.key)];
@@ -99,6 +106,9 @@ export default function ProfileScreen() {
         prioritizedKeys.forEach((key) => {
             if (!MODULE_CATALOG_MAP[key]) return;
             if (deduped.includes(key)) return;
+            // Filter out hidden modules (not in visibleModules)
+            const catalogItem = MODULE_CATALOG_MAP[key];
+            if (catalogItem.moduleId && !visibleModuleIds.has(catalogItem.moduleId)) return;
             deduped.push(key);
         });
 
@@ -121,15 +131,15 @@ export default function ProfileScreen() {
                 key: 'feature-more',
                 label: '더보기',
                 icon: Plus,
-                onPress: () => router.push('/feature-modules-all'),
+                onPress: () => router.push('/store'),
                 status: 'more',
             },
         ];
-    }, [shortcuts, recentModules]);
+    }, [shortcuts, recentModules, visibleModuleIds]);
 
     return (
         <SafeAreaView style={styles.container}>
-            <DemoBanner />
+            <StatusBanners />
 
             {/* 비로그인 상태: 로그인 버튼들 (가운데 정렬) */}
             {!isLoggedIn && (
@@ -144,7 +154,7 @@ export default function ProfileScreen() {
                         </View>
                         <Text style={styles.notLoggedInSlogan}>당신의 목표를 향한 나침반</Text>
                         <Text style={styles.notLoggedInDescription}>
-                            로그인하고 목표를 관리해보세요
+                            가입하면 데이터가 안전하게 저장돼요
                         </Text>
 
                         {/* 카카오로 시작하기 */}
@@ -153,8 +163,8 @@ export default function ProfileScreen() {
                                 style={styles.kakaoButtonLarge}
                                 onPress={async () => {
                                     const { error } = await signInWithKakao();
-                                    if (error && error.message !== '로그인이 취소되었습니다.') {
-                                        showAlert('카카오 로그인 실패', error.message);
+                                    if (error && error.message !== '로그인이 취소됐어요.') {
+                                        showAlert('로그인 안내', '카카오 로그인 중 문제가 생겼어요. 다시 시도해주세요.');
                                     }
                                 }}
                             >
@@ -169,8 +179,8 @@ export default function ProfileScreen() {
                                 style={styles.appleButtonLarge}
                                 onPress={async () => {
                                     const { error } = await signInWithApple();
-                                    if (error && error.message !== '로그인이 취소되었습니다.') {
-                                        showAlert('Apple 로그인 실패', error.message);
+                                    if (error && error.message !== '로그인이 취소됐어요.') {
+                                        showAlert('로그인 안내', 'Apple 로그인 중 문제가 생겼어요. 다시 시도해주세요.');
                                     }
                                 }}
                             >
@@ -215,7 +225,7 @@ export default function ProfileScreen() {
             {/* 로그인 상태: 기존 UI */}
             {isLoggedIn && (
                 <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-                    {/* 앱 브랜딩 섹션 */}
+                    {/* 사용자 섹션 */}
                     <View style={styles.brandSection}>
                         <View style={styles.brandHeader}>
                             <Image
@@ -224,18 +234,26 @@ export default function ProfileScreen() {
                             />
                             <Text style={styles.brandName}>Polaris</Text>
                         </View>
-                        <Text style={styles.brandSlogan}>당신의 목표를 향한 나침반</Text>
-                        <TouchableOpacity
-                            style={styles.logoutButton}
-                            onPress={() => signOut()}
+
+                        {/* 스토어 카드 */}
+                        <Pressable
+                            style={styles.planCard}
+                            onPress={() => router.push('/store')}
                         >
-                            <Text style={styles.logoutButtonText}>로그아웃</Text>
-                        </TouchableOpacity>
+                            <View style={styles.planCardLeft}>
+                                <Crown size={18} color={Colors.accent} />
+                                <Text style={styles.planCardTitle}>스토어</Text>
+                            </View>
+                            <View style={styles.planCardRight}>
+                                <Text style={styles.planCardSubFree}>둘러보기</Text>
+                                <ChevronRight size={16} color={Colors.textMuted} />
+                            </View>
+                        </Pressable>
                     </View>
 
                     {/* 기능 모듈 섹션 */}
                     <View style={styles.menuGroup}>
-                        <Text style={styles.menuGroupTitle}>기능 모듈</Text>
+                        <Text style={styles.menuGroupTitle}>나의 기능</Text>
                         <View style={styles.moduleGrid}>
                             {moduleTiles.map((tile) => {
                                 const Icon = tile.icon;
@@ -269,7 +287,7 @@ export default function ProfileScreen() {
                         <View style={styles.menuSection}>
                             <MenuItem
                                 icon={<LayoutGrid size={20} color={Colors.textMuted} />}
-                                label="바로가기 관리"
+                                label="바로가기 설정"
                                 onPress={() => router.push('/shortcut-manager')}
                             />
                             <MenuItem
@@ -284,10 +302,16 @@ export default function ProfileScreen() {
                             />
                             <MenuItem
                                 icon={<Info size={20} color={Colors.textMuted} />}
-                                label="이용약관 및 개인정보처리방침"
+                                label="약관 및 개인정보 처리방침"
                                 onPress={() => Linking.openURL('https://www.notion.so/neolee/Polaris-2f86e247b03580499a70fb4edff6382d')}
                             />
                         </View>
+                        <TouchableOpacity
+                            style={styles.logoutButton}
+                            onPress={() => signOut()}
+                        >
+                            <Text style={styles.logoutButtonText}>로그아웃</Text>
+                        </TouchableOpacity>
                     </View>
 
                     {/* 사업자 정보 푸터 */}
@@ -350,10 +374,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: Colors.textPrimary,
     },
-    brandSlogan: {
-        fontSize: FontSizes.base,
-        color: Colors.textMuted,
-    },
+    // brandSlogan removed - simplified brand section
     kakaoButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -438,12 +459,11 @@ const styles = StyleSheet.create({
     moduleGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        rowGap: Spacing.sm,
+        gap: Spacing.md,
     },
     moduleTile: {
-        width: '18.8%',
-        aspectRatio: 0.95,
+        width: '22.5%',
+        aspectRatio: 0.9,
         backgroundColor: Colors.bgSecondary,
         borderRadius: BorderRadius['2xl'],
         borderWidth: 1,
@@ -505,10 +525,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.lg,
     },
     footerText: {
-        fontSize: FontSizes.xs,
+        fontSize: 10,
         color: Colors.textMuted,
         textAlign: 'center',
-        lineHeight: 18,
+        lineHeight: 16,
     },
     // 비로그인 상태 스타일
     notLoggedInContainer: {
@@ -592,14 +612,39 @@ const styles = StyleSheet.create({
         color: Colors.textMuted,
         textDecorationLine: 'underline',
     },
-    logoutButton: {
-        backgroundColor: Colors.bgTertiary,
-        borderRadius: BorderRadius['4xl'],
-        paddingVertical: Spacing['2xl'],
-        paddingHorizontal: Spacing['4xl'],
-        marginTop: Spacing.lg,
-        width: '100%',
+    planCard: {
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: Colors.bgTertiary,
+        borderRadius: BorderRadius['2xl'],
+        paddingVertical: Spacing['2xl'],
+        paddingHorizontal: Spacing['2xl'],
+        width: '100%',
+    },
+    planCardLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.lg,
+    },
+    planCardTitle: {
+        fontSize: FontSizes.base,
+        fontWeight: '600',
+        color: Colors.textPrimary,
+    },
+    planCardRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    planCardSubFree: {
+        fontSize: FontSizes.sm,
+        color: Colors.accent,
+    },
+    logoutButton: {
+        alignItems: 'center',
+        paddingVertical: Spacing['2xl'],
+        marginTop: Spacing['2xl'],
     },
     logoutButtonText: {
         fontSize: FontSizes.base,

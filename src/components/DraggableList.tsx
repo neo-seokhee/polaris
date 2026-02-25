@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, ScrollView } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { mediumImpact } from '@/lib/haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -154,6 +155,7 @@ export function DraggableList<T>({
               onLayout={handleItemLayout}
               isDragging={draggingIdx === index}
               onDragStart={(idx) => {
+                mediumImpact();
                 draggedIndex.value = idx;
                 currentIndex.value = idx;
                 setIsDraggingAny(true);

@@ -35,8 +35,7 @@ export function DDaySection({
 
   // 통합 편집 모달 상태
   const [editModalVisible, setEditModalVisible] = useState(false);
-
-  // 확언 편집 상태
+  const [editTab, setEditTab] = useState<'affirmation' | 'dday'>('affirmation');
   const [editingAffirmationId, setEditingAffirmationId] = useState<string | null>(null);
   const [editingAffirmationText, setEditingAffirmationText] = useState("");
   const [newAffirmationText, setNewAffirmationText] = useState("");
@@ -45,20 +44,15 @@ export function DDaySection({
   // 통합 편집 모달 열기
   const handleOpenEditModal = () => {
     if (isDemoMode) {
-      checkDemoAndNudge('확언 또는 D-Day를 수정');
+      checkDemoAndNudge('확언 / D-Day를 수정');
       return;
     }
     setEditingAffirmationId(null);
     setEditingAffirmationText("");
     setNewAffirmationText("");
     setShowAddAffirmation(false);
+    setEditTab('affirmation');
     setEditModalVisible(true);
-  };
-
-  // 통합 편집 모달 닫기
-  const handleCloseEditModal = () => {
-    Keyboard.dismiss();
-    setEditModalVisible(false);
   };
 
   // 확언 추가
@@ -95,7 +89,7 @@ export function DDaySection({
   const handleDeleteAffirmation = (id: string) => {
     Alert.alert(
       "확언 삭제",
-      "이 확언을 삭제하시겠습니까?",
+      "이 확언을 삭제할까요?",
       [
         { text: "취소", style: "cancel" },
         {
@@ -162,21 +156,37 @@ export function DDaySection({
       visible={editModalVisible}
       transparent
       animationType="slide"
-      onRequestClose={handleCloseEditModal}
+      onRequestClose={() => { Keyboard.dismiss(); setEditModalVisible(false); }}
     >
       <GestureHandlerRootView style={styles.overlay}>
         <View style={styles.modal}>
           <View style={styles.header}>
             <Text style={styles.modalTitle}>확언 / D-Day 수정</Text>
-            <TouchableOpacity onPress={handleCloseEditModal}>
+            <TouchableOpacity onPress={() => { Keyboard.dismiss(); setEditModalVisible(false); }}>
               <X size={24} color={Colors.textMuted} />
             </TouchableOpacity>
           </View>
 
+          <View style={styles.tabBar}>
+            <Pressable
+              style={[styles.tab, editTab === 'affirmation' && styles.tabActive]}
+              onPress={() => setEditTab('affirmation')}
+            >
+              <Text style={[styles.tabText, editTab === 'affirmation' && styles.tabTextActive]}>확언</Text>
+              {editTab === 'affirmation' && <View style={styles.tabIndicator} />}
+            </Pressable>
+            <Pressable
+              style={[styles.tab, editTab === 'dday' && styles.tabActive]}
+              onPress={() => setEditTab('dday')}
+            >
+              <Text style={[styles.tabText, editTab === 'dday' && styles.tabTextActive]}>D-Day</Text>
+              {editTab === 'dday' && <View style={styles.tabIndicator} />}
+            </Pressable>
+          </View>
+
           <ScrollView style={styles.editScrollView} showsVerticalScrollIndicator={false}>
-            {/* 확언 섹션 */}
+            {editTab === 'affirmation' && (
             <View style={styles.editSection}>
-              <Text style={styles.sectionTitle}>오늘의 확언</Text>
               <View style={styles.affirmationList}>
                 {affirmations.map((affirmation) => (
                   <View key={affirmation.id} style={styles.affirmationItem}>
@@ -217,7 +227,6 @@ export function DDaySection({
                   </View>
                 ))}
 
-                {/* 확언 추가 */}
                 {showAddAffirmation ? (
                   <View style={styles.addAffirmationInputContainer}>
                     <TextInput
@@ -252,10 +261,10 @@ export function DDaySection({
                 )}
               </View>
             </View>
+            )}
 
-            {/* D-Day 섹션 */}
+            {editTab === 'dday' && (
             <View style={styles.editSection}>
-              <Text style={styles.sectionTitle}>D-Day</Text>
               <View style={styles.ddayList}>
                 {ddays.map((dday) => {
                   const days = calculateDDay(dday.target_date);
@@ -292,11 +301,12 @@ export function DDaySection({
                 )}
               </View>
             </View>
+            )}
           </ScrollView>
 
           <Pressable
             style={({ pressed }) => [styles.editModalSaveButton, pressed && styles.buttonPressed]}
-            onPress={handleCloseEditModal}
+            onPress={() => { Keyboard.dismiss(); setEditModalVisible(false); }}
           >
             <Text style={styles.saveButtonText}>완료</Text>
           </Pressable>
@@ -429,9 +439,9 @@ export function DDaySection({
             </Pressable>
           )}
         </View>
-        <Pressable style={styles.editButton} onPress={handleOpenEditModal}>
-          <Pencil size={14} color={Colors.textMuted} />
-        </Pressable>
+          <Pressable style={styles.editButton} onPress={handleOpenEditModal}>
+            <Pencil size={14} color={Colors.textMuted} />
+          </Pressable>
       </View>
       {renderModal()}
       {renderEditModal()}
@@ -461,7 +471,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   editButton: {
-    padding: Spacing.sm,
+    padding: Spacing.xl,
   },
   emptyText: {
     fontSize: FontSizes.sm,
@@ -497,7 +507,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   addButton: {
-    padding: Spacing.xs,
+    padding: Spacing.xl,
   },
   overlay: {
     flex: 1,
@@ -590,6 +600,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // 탭 바 스타일
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSecondary,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    position: 'relative',
+  },
+  tabActive: {},
+  tabText: {
+    fontSize: FontSizes.base,
+    fontWeight: '500',
+    color: Colors.textMuted,
+  },
+  tabTextActive: {
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: '20%',
+    right: '20%',
+    height: 2,
+    backgroundColor: Colors.accent,
+    borderRadius: 1,
+  },
   // 통합 편집 모달 스타일
   editScrollView: {
     maxHeight: 400,
@@ -597,11 +638,6 @@ const styles = StyleSheet.create({
   editSection: {
     gap: Spacing.md,
     marginBottom: Spacing['2xl'],
-  },
-  sectionTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
-    color: Colors.textSecondary,
   },
   // 확언 목록 스타일
   affirmationList: {
@@ -627,7 +663,7 @@ const styles = StyleSheet.create({
     marginRight: Spacing.md,
   },
   deleteIconButton: {
-    padding: Spacing.xs,
+    padding: Spacing.md,
   },
   affirmationEditRow: {
     padding: Spacing['2xl'],

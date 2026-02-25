@@ -39,13 +39,13 @@ export function CalendarSubscriptionModal({
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm(`"${subscription.name}" 캘린더를 삭제하시겠습니까?`)) {
+            if (window.confirm(`"${subscription.name}" 캘린더를 삭제할까요?`)) {
                 confirmRemove();
             }
         } else {
             Alert.alert(
                 '캘린더 삭제',
-                `"${subscription.name}" 캘린더를 삭제하시겠습니까?`,
+                `"${subscription.name}" 캘린더를 삭제할까요?`,
                 [
                     { text: '취소', style: 'cancel' },
                     { text: '삭제', style: 'destructive', onPress: confirmRemove },

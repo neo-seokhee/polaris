@@ -1,14 +1,16 @@
 import { useState, useCallback } from "react";
-import { View, StyleSheet, Pressable, ActivityIndicator, Text } from "react-native";
+import { View, StyleSheet, Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Plus, Target, ClipboardCheck } from "lucide-react-native";
+import { GoalSkeleton } from "@/components/Skeleton";
+import { FadeIn } from "@/components/FadeIn";
 import { GoalHeader } from "@/components/GoalHeader";
 import { GoalCard } from "@/components/GoalCard";
 import { YearGoalCard } from "@/components/YearGoalCard";
 import { AddGoalModal } from "@/components/AddGoalModal";
 import { GoalDetailModal } from "@/components/GoalDetailModal";
 import { MonthlyEvaluationModal } from "@/components/MonthlyEvaluationModal";
-import { DemoBanner } from "@/components/DemoBanner";
+import { StatusBanners } from "@/components/StatusBanners";
 import { DraggableList } from "@/components/DraggableList";
 import { useGoals, Goal } from "@/hooks/useGoals";
 import { useYearGoalText } from "@/hooks/useYearGoalText";
@@ -54,7 +56,7 @@ export function GoalsScreen() {
     }, [reorderGoals]);
 
     const renderGoalItem = useCallback((goal: Goal, index: number, isDragging: boolean) => (
-        <View style={styles.goalItemWrapper}>
+        <FadeIn delay={index * 50} style={styles.goalItemWrapper}>
             <GoalCard
                 title={goal.title}
                 description={goal.description}
@@ -67,7 +69,7 @@ export function GoalsScreen() {
                 onPress={() => handleGoalPress(goal)}
                 isDragging={isDragging}
             />
-        </View>
+        </FadeIn>
     ), []);
 
     const keyExtractor = useCallback((goal: Goal) => goal.id, []);
@@ -90,18 +92,18 @@ export function GoalsScreen() {
     const ListEmpty = (
         <View style={styles.emptyContainer}>
             <Target size={48} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>{selectedYear}년 목표가 없습니다</Text>
-            <Text style={styles.emptySubText}>목표를 추가하여 시작하세요</Text>
+            <Text style={styles.emptyText}>아직 목표를 정하지 않았어요</Text>
+            <Text style={styles.emptySubText}>올해 이루고 싶은 것을 적어볼까요?</Text>
         </View>
     );
 
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <DemoBanner />
+            <StatusBanners />
             {isLoading ? (
-                <View style={[styles.scrollView, styles.loadingContainer]}>
+                <View style={styles.scrollView}>
                     {ListHeader}
-                    <ActivityIndicator size="large" color={Colors.accent} />
+                    <GoalSkeleton />
                 </View>
             ) : (
                 <DraggableList
@@ -141,30 +143,27 @@ export function GoalsScreen() {
                 onUpdateGoal={updateGoal}
             />
 
-            {/* FAB 버튼들 */}
-            <View style={styles.fabContainer}>
-                {/* 월간 평가 버튼 */}
-                <Pressable
-                    style={styles.fabSecondary}
-                    onPress={() => setShowEvaluationModal(true)}
-                >
-                    <ClipboardCheck size={22} color={Colors.textOnDark} />
-                </Pressable>
+            {/* 월간 평가 FAB */}
+            <Pressable
+                style={styles.fabSecondary}
+                onPress={() => setShowEvaluationModal(true)}
+            >
+                <ClipboardCheck size={24} color={Colors.textOnDark} />
+            </Pressable>
 
-                {/* 목표 추가 버튼 */}
-                <Pressable
-                    style={styles.fab}
-                    onPress={() => {
-                        if (isDemoMode) {
-                            checkDemoAndNudge('목표를 추가');
-                            return;
-                        }
-                        setShowAddModal(true);
-                    }}
-                >
-                    <Plus size={24} color={Colors.textOnDark} strokeWidth={2.5} />
-                </Pressable>
-            </View>
+            {/* 목표 추가 FAB */}
+            <Pressable
+                style={styles.fab}
+                onPress={() => {
+                    if (isDemoMode) {
+                        checkDemoAndNudge('목표를 추가');
+                        return;
+                    }
+                    setShowAddModal(true);
+                }}
+            >
+                <Plus size={24} color={Colors.textOnDark} strokeWidth={2.5} />
+            </Pressable>
         </SafeAreaView>
     );
 }
@@ -184,7 +183,7 @@ const styles = StyleSheet.create({
     content: {
         paddingHorizontal: Spacing['3xl'],
         paddingTop: Spacing['3xl'],
-        paddingBottom: 150, // FAB 버튼 2개 높이 + 여유 공간
+        paddingBottom: 150,
     },
     listHeader: {
         marginBottom: Spacing['2xl'],
@@ -214,24 +213,23 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.sm,
         color: Colors.textMuted,
     },
-    fabContainer: {
+    fabSecondary: {
         position: 'absolute',
         right: Spacing['3xl'],
-        bottom: Spacing['3xl'],
-        alignItems: 'center',
-        gap: Spacing.lg,
-    },
-    fabSecondary: {
+        bottom: Spacing['3xl'] + 56 + Spacing.md,
         width: 56,
         height: 56,
         borderRadius: 28,
         backgroundColor: Colors.textSecondary,
         justifyContent: 'center',
         alignItems: 'center',
-        boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)',
-        elevation: 8,
+        boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.25)',
+        elevation: 4,
     },
     fab: {
+        position: 'absolute',
+        right: Spacing['3xl'],
+        bottom: Spacing['3xl'],
         width: 56,
         height: 56,
         borderRadius: 28,

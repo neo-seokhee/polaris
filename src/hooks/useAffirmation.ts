@@ -1,16 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNetwork } from '@/contexts/NetworkContext';
 import { useAnalytics } from '@/contexts/AnalyticsContext';
+import { writeCache, readCache } from '@/lib/offlineCache';
+import { enqueue } from '@/lib/syncQueue';
 import type { Database } from '@/lib/database.types';
 import { DEMO_AFFIRMATIONS } from '@/data/demoData';
 
 export type Affirmation = Database['public']['Tables']['affirmations']['Row'];
 
 const DEFAULT_MESSAGE = '오늘 하루도 힘내세요';
+const TABLE = 'affirmations';
 
 export function useAffirmation() {
     const { user, isDemoMode } = useAuth();
+    const { isOnline, syncVersion } = useNetwork();
     const { track } = useAnalytics();
     const [affirmations, setAffirmations] = useState<Affirmation[]>([]);
     const [selectedText, setSelectedText] = useState<string>(DEFAULT_MESSAGE);
@@ -27,16 +32,25 @@ export function useAffirmation() {
 
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('affirmations')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
 
-            if (error) throw error;
-            setAffirmations(data || []);
+            if (isOnline) {
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                setAffirmations(data || []);
+                writeCache(user.id, TABLE, data || []);
+            } else {
+                const cached = await readCache<Affirmation[]>(user.id, TABLE);
+                setAffirmations(cached || []);
+            }
         } catch (err) {
             console.error('Error fetching affirmations:', err);
+            const cached = await readCache<Affirmation[]>(user.id, TABLE);
+            if (cached) setAffirmations(cached);
         } finally {
             setLoading(false);
         }
@@ -71,24 +85,46 @@ export function useAffirmation() {
         if (isDemoMode) return { demoBlocked: true };
         if (!user) return;
 
-        try {
-            const { data, error } = await supabase
-                .from('affirmations')
-                .insert({ user_id: user.id, text })
-                .select()
-                .single();
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-            if (error) throw error;
+        if (isOnline) {
+            try {
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .insert({ user_id: user.id, text })
+                    .select()
+                    .single();
 
-            setAffirmations(prev => [data, ...prev]);
-            // 첫 확언 추가 시 바로 선택
+                if (error) throw error;
+
+                setAffirmations(prev => [data, ...prev]);
+                if (affirmations.length === 0) {
+                    setSelectedText(data.text);
+                    initialRandomDone.current = true;
+                }
+                track('affirmation_created');
+            } catch (err) {
+                console.error('Error adding affirmation:', err);
+            }
+        } else {
+            const optimistic = {
+                id: tempId,
+                user_id: user.id,
+                text,
+                created_at: new Date().toISOString(),
+            } as Affirmation;
+            setAffirmations(prev => [optimistic, ...prev]);
             if (affirmations.length === 0) {
-                setSelectedText(data.text);
+                setSelectedText(text);
                 initialRandomDone.current = true;
             }
+            await enqueue(user.id, {
+                table: TABLE,
+                type: 'insert',
+                rowId: tempId,
+                data: { user_id: user.id, text },
+            });
             track('affirmation_created');
-        } catch (err) {
-            console.error('Error adding affirmation:', err);
         }
     };
 
@@ -96,28 +132,40 @@ export function useAffirmation() {
         if (isDemoMode) return { demoBlocked: true };
         if (!user) return;
 
-        try {
-            const { data, error } = await supabase
-                .from('affirmations')
-                .update({ text })
-                .eq('id', id)
-                .select()
-                .single();
+        const oldAffirmation = affirmations.find(a => a.id === id);
 
-            if (error) throw error;
+        // Optimistic update
+        setAffirmations(prev => prev.map(a => a.id === id ? { ...a, text } : a));
+        if (oldAffirmation && oldAffirmation.text === selectedText) {
+            setSelectedText(text);
+        }
 
-            setAffirmations(prev =>
-                prev.map(a => a.id === id ? data : a)
-            );
+        if (isOnline) {
+            try {
+                const { data, error } = await supabase
+                    .from(TABLE)
+                    .update({ text })
+                    .eq('id', id)
+                    .select()
+                    .single();
 
-            // 현재 선택된 확언이 수정된 경우 업데이트
-            const oldAffirmation = affirmations.find(a => a.id === id);
-            if (oldAffirmation && oldAffirmation.text === selectedText) {
-                setSelectedText(data.text);
+                if (error) throw error;
+                setAffirmations(prev => prev.map(a => a.id === id ? data : a));
+                if (oldAffirmation && oldAffirmation.text === selectedText) {
+                    setSelectedText(data.text);
+                }
+                track('affirmation_updated');
+            } catch (err) {
+                console.error('Error updating affirmation:', err);
             }
+        } else {
+            await enqueue(user.id, {
+                table: TABLE,
+                type: 'update',
+                rowId: id,
+                data: { text },
+            });
             track('affirmation_updated');
-        } catch (err) {
-            console.error('Error updating affirmation:', err);
         }
     };
 
@@ -125,29 +173,37 @@ export function useAffirmation() {
         if (isDemoMode) return { demoBlocked: true };
         if (!user) return;
 
-        try {
-            const { error } = await supabase
-                .from('affirmations')
-                .delete()
-                .eq('id', id);
+        const deletedAffirmation = affirmations.find(a => a.id === id);
+        const newAffirmations = affirmations.filter(a => a.id !== id);
+        setAffirmations(newAffirmations);
 
-            if (error) throw error;
-
-            const deletedAffirmation = affirmations.find(a => a.id === id);
-            const newAffirmations = affirmations.filter(a => a.id !== id);
-            setAffirmations(newAffirmations);
-
-            // 삭제된 확언이 현재 선택된 것이면 다른 것 선택
-            if (deletedAffirmation && deletedAffirmation.text === selectedText) {
-                if (newAffirmations.length > 0) {
-                    setSelectedText(newAffirmations[0].text);
-                } else {
-                    setSelectedText(DEFAULT_MESSAGE);
-                }
+        if (deletedAffirmation && deletedAffirmation.text === selectedText) {
+            if (newAffirmations.length > 0) {
+                setSelectedText(newAffirmations[0].text);
+            } else {
+                setSelectedText(DEFAULT_MESSAGE);
             }
+        }
+
+        if (isOnline) {
+            try {
+                const { error } = await supabase
+                    .from(TABLE)
+                    .delete()
+                    .eq('id', id);
+
+                if (error) throw error;
+                track('affirmation_deleted');
+            } catch (err) {
+                console.error('Error deleting affirmation:', err);
+            }
+        } else {
+            await enqueue(user.id, {
+                table: TABLE,
+                type: 'delete',
+                rowId: id,
+            });
             track('affirmation_deleted');
-        } catch (err) {
-            console.error('Error deleting affirmation:', err);
         }
     };
 
@@ -160,7 +216,7 @@ export function useAffirmation() {
         if (user) {
             fetchAffirmations();
         }
-    }, [user, isDemoMode]);
+    }, [user, isDemoMode, syncVersion]);
 
     return {
         text: selectedText,

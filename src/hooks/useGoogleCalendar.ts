@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -7,6 +7,8 @@ import * as ExpoLinking from 'expo-linking';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEntitlements } from '@/contexts/EntitlementsContext';
+import { useNetwork } from '@/contexts/NetworkContext';
 import {
     exchangeCodeForTokens,
     refreshAccessToken,
@@ -76,6 +78,8 @@ const storage = {
 
 export function useGoogleCalendar() {
     const { user } = useAuth();
+    const { canUseGoogleCalendar, showUpgradePrompt } = useEntitlements();
+    const { isOnline } = useNetwork();
     const [isConnected, setIsConnected] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -441,6 +445,15 @@ export function useGoogleCalendar() {
 
     // Google 계정 연결
     const connect = async (): Promise<{ error: string | null }> => {
+        // Plan entitlement check (block new connections, keep existing ones)
+        if (!canUseGoogleCalendar()) {
+            showUpgradePrompt('Google Calendar 연동', 'Google Calendar 연동은 Pro 플랜에서 사용할 수 있습니다.');
+            return { error: 'Pro 플랜이 필요해요.' };
+        }
+        if (!isOnline) {
+            Alert.alert('오프라인', 'Google Calendar 연결은 인터넷이 필요해요.');
+            return { error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
         if (!isGoogleCalendarConfigured()) {
             const errorMsg = 'Google Calendar API가 설정되지 않았습니다.\n\n.env 파일에 다음 환경 변수를 설정하세요:\n- EXPO_PUBLIC_GOOGLE_CLIENT_ID\n- EXPO_PUBLIC_GOOGLE_CLIENT_SECRET';
             setError(errorMsg);
@@ -637,6 +650,10 @@ export function useGoogleCalendar() {
 
     // 동기화 (새로고침)
     const sync = async () => {
+        if (!isOnline) {
+            Alert.alert('오프라인', 'Google Calendar 동기화는 인터넷이 필요해요.');
+            return { calendars: [], events: [] };
+        }
         return await fetchCalendarsAndEvents();
     };
 
@@ -668,6 +685,10 @@ export function useGoogleCalendar() {
 
     // 일정 생성
     const addEvent = async (params: CreateEventParams): Promise<{ success: boolean; error?: string }> => {
+        if (!isOnline) {
+            Alert.alert('오프라인', '일정 추가는 인터넷이 필요해요.');
+            return { success: false, error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
         try {
             const accessToken = await getValidAccessToken();
             if (!accessToken) {
@@ -707,6 +728,10 @@ export function useGoogleCalendar() {
 
     // 일정 수정
     const editEvent = async (params: UpdateEventParams): Promise<{ success: boolean; error?: string }> => {
+        if (!isOnline) {
+            Alert.alert('오프라인', '일정 수정은 인터넷이 필요해요.');
+            return { success: false, error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
         try {
             const accessToken = await getValidAccessToken();
             if (!accessToken) {
@@ -742,6 +767,10 @@ export function useGoogleCalendar() {
 
     // 일정 삭제
     const removeEvent = async (eventId: string, calendarId: string): Promise<{ success: boolean; error?: string }> => {
+        if (!isOnline) {
+            Alert.alert('오프라인', '일정 삭제는 인터넷이 필요해요.');
+            return { success: false, error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
         try {
             const accessToken = await getValidAccessToken();
             if (!accessToken) {

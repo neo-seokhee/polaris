@@ -52,7 +52,7 @@ function WebRichTextEditor({
                     min-height: ${Math.max(minHeight - 44, 60)}px;
                     padding: 12px;
                     color: ${Colors.textPrimary};
-                    font-size: 12px;
+                    font-size: 14px;
                     line-height: 1.8;
                     outline: none;
                     white-space: pre-wrap;
@@ -60,7 +60,7 @@ function WebRichTextEditor({
                 }
                 .tiptap-content * {
                     color: ${Colors.textPrimary};
-                    font-size: 12px;
+                    font-size: 14px;
                 }
                 .tiptap-content p { margin: 0 0 6px 0; }
                 .tiptap-content ul,
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     mobileTextInput: {
         backgroundColor: Colors.bgTertiary,
         color: '#FFFFFF',
-        fontSize: 12,
+        fontSize: 14,
         lineHeight: 22,
         padding: 12,
         textAlignVertical: 'top',

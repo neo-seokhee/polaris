@@ -3,7 +3,9 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, StyleSheet, Platform, Text, TextInput } from "react-native";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { NetworkProvider } from "@/contexts/NetworkContext";
 import { AnalyticsProvider } from "@/contexts/AnalyticsContext";
+import { EntitlementsProvider } from "@/contexts/EntitlementsContext";
 import { DemoNudgeProvider } from "@/contexts/DemoNudgeContext";
 import { WebLayoutProvider, useWebLayout } from "@/contexts/WebLayoutContext";
 import { FeatureModulesProvider } from "@/contexts/FeatureModulesContext";
@@ -110,15 +112,19 @@ export default function RootLayout() {
 
     return (
         <AuthProvider>
-            <AnalyticsProvider>
-                <DemoNudgeProvider>
-                    <FeatureModulesProvider>
-                        <WebLayoutProvider>
-                            <AppContent />
-                        </WebLayoutProvider>
-                    </FeatureModulesProvider>
-                </DemoNudgeProvider>
-            </AnalyticsProvider>
+            <NetworkProvider>
+                <AnalyticsProvider>
+                    <EntitlementsProvider>
+                        <DemoNudgeProvider>
+                            <FeatureModulesProvider>
+                                <WebLayoutProvider>
+                                    <AppContent />
+                                </WebLayoutProvider>
+                            </FeatureModulesProvider>
+                        </DemoNudgeProvider>
+                    </EntitlementsProvider>
+                </AnalyticsProvider>
+            </NetworkProvider>
         </AuthProvider>
     );
 }

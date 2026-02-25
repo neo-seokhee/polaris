@@ -202,13 +202,13 @@ export function EventDetailModal({ visible, onClose, event, calendars, onUpdate,
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm('이 일정을 삭제하시겠습니까?')) {
+            if (window.confirm('이 일정을 삭제할까요?')) {
                 confirmDelete();
             }
         } else {
             Alert.alert(
                 '일정 삭제',
-                '이 일정을 삭제하시겠습니까?',
+                '이 일정을 삭제할까요?',
                 [
                     { text: '취소', style: 'cancel' },
                     { text: '삭제', style: 'destructive', onPress: confirmDelete },

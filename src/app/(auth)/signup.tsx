@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, Platform, ScrollView, KeyboardAvoidingView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, router } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Spacing, BorderRadius, FontSizes } from "@/constants/theme";
+import { ArrowLeft } from "lucide-react-native";
 
 const showAlert = (title: string, message: string, onConfirm?: () => void) => {
     if (Platform.OS === 'web') {
@@ -28,10 +29,7 @@ export default function SignupScreen() {
     const { signUp } = useAuth();
 
     const formatPhoneNumber = (text: string) => {
-        // Remove all non-digit characters
         const cleaned = text.replace(/\D/g, '');
-
-        // Format as 010-1234-5678
         if (cleaned.length <= 3) {
             return cleaned;
         } else if (cleaned.length <= 7) {
@@ -47,7 +45,6 @@ export default function SignupScreen() {
     };
 
     const isValidPhoneNumber = (phone: string) => {
-        // Check format: 010-1234-5678
         const phoneRegex = /^010-\d{4}-\d{4}$/;
         return phoneRegex.test(phone);
     };
@@ -56,27 +53,27 @@ export default function SignupScreen() {
         const missingFields: string[] = [];
         if (!name.trim()) missingFields.push("이름");
         if (!email.trim()) missingFields.push("이메일");
-        if (!phone.trim()) missingFields.push("휴대전화번호");
+        if (!phone.trim()) missingFields.push("전화번호");
         if (!password) missingFields.push("비밀번호");
         if (!confirmPassword) missingFields.push("비밀번호 확인");
 
         if (missingFields.length > 0) {
-            showAlert("오류", `다음 항목을 입력해주세요:\n${missingFields.join(", ")}`);
+            showAlert("입력 확인", `${missingFields.join(", ")}을(를) 입력해주세요.`);
             return;
         }
 
         if (!isValidPhoneNumber(phone)) {
-            showAlert("오류", "휴대전화번호 형식이 올바르지 않습니다. (예: 010-1234-5678)");
+            showAlert("전화번호 확인", "올바른 전화번호 형식으로 입력해주세요.\n예: 010-1234-5678");
             return;
         }
 
         if (password !== confirmPassword) {
-            showAlert("오류", "비밀번호가 일치하지 않습니다.");
+            showAlert("비밀번호 확인", "비밀번호가 서로 달라요. 다시 확인해주세요.");
             return;
         }
 
         if (password.length < 6) {
-            showAlert("오류", "비밀번호는 최소 6자 이상이어야 합니다.");
+            showAlert("비밀번호 확인", "비밀번호는 6자 이상으로 설정해주세요.");
             return;
         }
 
@@ -85,11 +82,11 @@ export default function SignupScreen() {
         setLoading(false);
 
         if (error) {
-            showAlert("회원가입 실패", error.message);
+            showAlert("가입 안내", error.message);
         } else {
             showAlert(
-                "회원가입 성공",
-                "이메일을 확인하여 계정을 인증해주세요.",
+                "가입 완료",
+                "이메일로 인증 링크를 보냈어요.\n메일을 확인해주세요.",
                 () => router.replace("/(auth)/login")
             );
         }
@@ -97,121 +94,120 @@ export default function SignupScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.content}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>이메일로 회원가입</Text>
-                    <Text style={styles.subtitle}>Polaris와 함께 시작하세요</Text>
-                </View>
-
-                <View style={styles.form}>
+            <KeyboardAvoidingView
+                style={styles.keyboardView}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                {/* 헤더 - 뒤로가기 */}
+                <View style={styles.topBar}>
                     <Pressable
                         style={styles.backButton}
-                        onPress={() => router.push('/(tabs)/profile')}
+                        onPress={() => router.back()}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     >
-                        <Text style={styles.backButtonText}>← 돌아가기</Text>
+                        <ArrowLeft size={24} color={Colors.textPrimary} />
                     </Pressable>
-
-                    <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}>
-                            <Text style={styles.label}>이름</Text>
-                            <Text style={styles.required}>*</Text>
-                        </View>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="이름을 입력하세요"
-                            placeholderTextColor={Colors.textMuted}
-                            value={name}
-                            onChangeText={setName}
-                            autoCapitalize="words"
-                        />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}>
-                            <Text style={styles.label}>이메일</Text>
-                            <Text style={styles.required}>*</Text>
-                        </View>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="이메일을 입력하세요"
-                            placeholderTextColor={Colors.textMuted}
-                            value={email}
-                            onChangeText={setEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                        />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}>
-                            <Text style={styles.label}>휴대전화번호</Text>
-                            <Text style={styles.required}>*</Text>
-                        </View>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="010-1234-5678"
-                            placeholderTextColor={Colors.textMuted}
-                            value={phone}
-                            onChangeText={handlePhoneChange}
-                            keyboardType="phone-pad"
-                            autoCapitalize="none"
-                            maxLength={13}
-                        />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}>
-                            <Text style={styles.label}>비밀번호</Text>
-                            <Text style={styles.required}>*</Text>
-                        </View>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="비밀번호를 입력하세요 (최소 6자)"
-                            placeholderTextColor={Colors.textMuted}
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                        <View style={styles.labelRow}>
-                            <Text style={styles.label}>비밀번호 확인</Text>
-                            <Text style={styles.required}>*</Text>
-                        </View>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="비밀번호를 다시 입력하세요"
-                            placeholderTextColor={Colors.textMuted}
-                            value={confirmPassword}
-                            onChangeText={setConfirmPassword}
-                            secureTextEntry
-                            autoCapitalize="none"
-                        />
-                    </View>
-
-                    <Pressable
-                        style={[styles.button, loading && styles.buttonDisabled]}
-                        onPress={handleSignup}
-                        disabled={loading}
-                    >
-                        <Text style={styles.buttonText}>
-                            {loading ? "가입 중..." : "회원가입"}
-                        </Text>
-                    </Pressable>
-
-                    <View style={styles.footer}>
-                        <Text style={styles.footerText}>이미 계정이 있으신가요? </Text>
-                        <Link href="/(auth)/login" asChild>
-                            <Pressable>
-                                <Text style={styles.link}>로그인</Text>
-                            </Pressable>
-                        </Link>
-                    </View>
                 </View>
-            </View>
+
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* One Thing per One Page - 헤더 메시지 */}
+                    <View style={styles.header}>
+                        <Text style={styles.title}>반가워요!</Text>
+                        <Text style={styles.subtitle}>간단한 정보만 입력하면 바로 시작할 수 있어요</Text>
+                    </View>
+
+                    <View style={styles.form}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>이름</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="홍길동"
+                                placeholderTextColor={Colors.textMuted}
+                                value={name}
+                                onChangeText={setName}
+                                autoCapitalize="words"
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>이메일</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="example@email.com"
+                                placeholderTextColor={Colors.textMuted}
+                                value={email}
+                                onChangeText={setEmail}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>전화번호</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="010-1234-5678"
+                                placeholderTextColor={Colors.textMuted}
+                                value={phone}
+                                onChangeText={handlePhoneChange}
+                                keyboardType="phone-pad"
+                                autoCapitalize="none"
+                                maxLength={13}
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>비밀번호</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="6자 이상 입력해주세요"
+                                placeholderTextColor={Colors.textMuted}
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry
+                                autoCapitalize="none"
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>비밀번호 확인</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="비밀번호를 한번 더 입력해주세요"
+                                placeholderTextColor={Colors.textMuted}
+                                value={confirmPassword}
+                                onChangeText={setConfirmPassword}
+                                secureTextEntry
+                                autoCapitalize="none"
+                            />
+                        </View>
+
+                        <Pressable
+                            style={[styles.button, loading && styles.buttonDisabled]}
+                            onPress={handleSignup}
+                            disabled={loading}
+                        >
+                            <Text style={styles.buttonText}>
+                                {loading ? "가입 중..." : "시작하기"}
+                            </Text>
+                        </Pressable>
+
+                        <View style={styles.footer}>
+                            <Text style={styles.footerText}>이미 계정이 있으신가요? </Text>
+                            <Link href="/(auth)/login" asChild>
+                                <Pressable hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                    <Text style={styles.link}>로그인</Text>
+                                </Pressable>
+                            </Link>
+                        </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
@@ -221,59 +217,63 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.bgPrimary,
     },
-    content: {
+    keyboardView: {
         flex: 1,
-        padding: Spacing['4xl'],
+    },
+    topBar: {
+        paddingHorizontal: Spacing['3xl'],
+        paddingVertical: Spacing.lg,
+    },
+    backButton: {
+        width: 44,
+        height: 44,
         justifyContent: 'center',
+        alignItems: 'center',
+    },
+    scrollContent: {
+        flexGrow: 1,
+        paddingHorizontal: Spacing['4xl'],
+        paddingBottom: Spacing['4xl'],
     },
     header: {
-        alignItems: 'center',
         marginBottom: Spacing['4xl'],
     },
     title: {
-        fontSize: 32,
+        fontSize: 28,
         fontWeight: '700',
         color: Colors.textPrimary,
-        marginBottom: Spacing.md,
+        marginBottom: Spacing.lg,
     },
     subtitle: {
-        fontSize: FontSizes.base,
+        fontSize: FontSizes.lg,
         color: Colors.textSecondary,
+        lineHeight: 22,
     },
     form: {
-        gap: Spacing['2xl'],
+        gap: Spacing['3xl'],
     },
     inputGroup: {
         gap: Spacing.md,
     },
-    labelRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
     label: {
-        fontSize: FontSizes.sm,
+        fontSize: FontSizes.base,
         fontWeight: '600',
-        color: Colors.textPrimary,
-    },
-    required: {
-        color: '#ef4444',
-        fontSize: FontSizes.sm,
-        fontWeight: '600',
+        color: Colors.textSecondary,
     },
     input: {
         backgroundColor: Colors.bgSecondary,
         borderWidth: 1,
         borderColor: Colors.borderPrimary,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
-        fontSize: FontSizes.base,
+        borderRadius: BorderRadius['2xl'],
+        paddingHorizontal: Spacing['2xl'],
+        paddingVertical: Spacing['2xl'],
+        fontSize: FontSizes.lg,
         color: Colors.textPrimary,
     },
     button: {
         backgroundColor: Colors.accent,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing['2xl'],
+        borderRadius: BorderRadius['2xl'],
+        paddingVertical: Spacing['2xl'] + 2,
         alignItems: 'center',
         marginTop: Spacing.md,
     },
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     buttonText: {
-        fontSize: FontSizes.base,
+        fontSize: FontSizes.lg,
         fontWeight: '600',
         color: Colors.textOnDark,
     },
@@ -289,24 +289,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: Spacing['2xl'],
+        marginTop: Spacing.lg,
     },
     footerText: {
-        fontSize: FontSizes.sm,
+        fontSize: FontSizes.base,
         color: Colors.textSecondary,
     },
     link: {
-        fontSize: FontSizes.sm,
-        fontWeight: '600',
-        color: Colors.accent,
-    },
-    backButton: {
-        alignSelf: 'flex-start',
-        marginBottom: Spacing.lg,
-    },
-    backButtonText: {
         fontSize: FontSizes.base,
-        color: Colors.accent,
         fontWeight: '600',
+        color: Colors.accent,
     },
 });

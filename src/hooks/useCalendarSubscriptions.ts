@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNetwork } from '@/contexts/NetworkContext';
 import { useAnalytics } from '@/contexts/AnalyticsContext';
 import { fetchAndParseICS } from '@/lib/icalParser';
+import { writeCache, readCache } from '@/lib/offlineCache';
 import type { Database } from '@/lib/database.types';
 
 type CalendarSubscription = Database['public']['Tables']['calendar_subscriptions']['Row'];
@@ -10,8 +13,11 @@ type CalendarSubscriptionInsert = Database['public']['Tables']['calendar_subscri
 type SyncedEvent = Database['public']['Tables']['synced_events']['Row'];
 type SyncedEventInsert = Database['public']['Tables']['synced_events']['Insert'];
 
+const CACHE_TABLE = 'calendar_subscriptions';
+
 export function useCalendarSubscriptions() {
     const { user } = useAuth();
+    const { isOnline, syncVersion } = useNetwork();
     const { track } = useAnalytics();
     const [subscriptions, setSubscriptions] = useState<CalendarSubscription[]>([]);
     const [loading, setLoading] = useState(true);
@@ -23,23 +29,36 @@ export function useCalendarSubscriptions() {
 
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('calendar_subscriptions')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: true });
 
-            if (error) throw error;
-            setSubscriptions(data || []);
+            if (isOnline) {
+                const { data, error } = await supabase
+                    .from('calendar_subscriptions')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+                setSubscriptions(data || []);
+                writeCache(user.id, CACHE_TABLE, data || []);
+            } else {
+                const cached = await readCache<CalendarSubscription[]>(user.id, CACHE_TABLE);
+                setSubscriptions(cached || []);
+            }
         } catch (err: any) {
             setError(err.message);
+            const cached = await readCache<CalendarSubscription[]>(user.id, CACHE_TABLE);
+            if (cached) setSubscriptions(cached);
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, isOnline]);
 
     const addSubscription = async (name: string, url: string, color: string = '#3B82F6') => {
         if (!user) return { error: 'User not authenticated' };
+        if (!isOnline) {
+            Alert.alert('오프라인', '캘린더 구독 추가는 인터넷이 필요해요.');
+            return { error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
 
         try {
             const newSubscription: CalendarSubscriptionInsert = {
@@ -71,6 +90,11 @@ export function useCalendarSubscriptions() {
     };
 
     const removeSubscription = async (id: string) => {
+        if (!isOnline) {
+            Alert.alert('오프라인', '캘린더 구독 삭제는 인터넷이 필요해요.');
+            return { error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
+
         try {
             const { error } = await supabase
                 .from('calendar_subscriptions')
@@ -89,6 +113,11 @@ export function useCalendarSubscriptions() {
     };
 
     const updateSubscription = async (id: string, updates: { name?: string; color?: string; is_enabled?: boolean }) => {
+        if (!isOnline) {
+            Alert.alert('오프라인', '캘린더 설정 변경은 인터넷이 필요해요.');
+            return { error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
+
         try {
             const { data, error } = await supabase
                 .from('calendar_subscriptions')
@@ -116,6 +145,11 @@ export function useCalendarSubscriptions() {
     };
 
     const syncSubscription = async (subscriptionId: string) => {
+        if (!isOnline) {
+            Alert.alert('오프라인', 'ICS 피드 동기화는 인터넷이 필요해요.');
+            return { error: '오프라인 상태에서는 사용할 수 없습니다.' };
+        }
+
         const subscription = subscriptions.find((s) => s.id === subscriptionId) ||
             (await supabase.from('calendar_subscriptions').select('*').eq('id', subscriptionId).single()).data;
 
@@ -128,14 +162,12 @@ export function useCalendarSubscriptions() {
             setSyncing(true);
             console.log('[Sync] Starting sync for:', subscription.name, subscription.url);
 
-            // 1. 먼저 새 이벤트 가져오기 시도
             let events;
             try {
                 events = await fetchAndParseICS(subscription.url);
                 console.log('[Sync] Parsed events count:', events.length);
             } catch (fetchError: any) {
                 console.error('[Sync] Fetch failed:', fetchError.message);
-                // 기존 캐시 데이터 수 확인
                 const { count } = await supabase
                     .from('synced_events')
                     .select('*', { count: 'exact', head: true })
@@ -151,21 +183,12 @@ export function useCalendarSubscriptions() {
                 throw fetchError;
             }
 
-            if (events.length > 0) {
-                console.log('[Sync] Sample event:', events[0]);
-            }
-
-            // 2. 중복 UID 제거
             const seenUids = new Set<string>();
             const uniqueEvents = events.filter((event) => {
-                if (seenUids.has(event.uid)) {
-                    return false;
-                }
+                if (seenUids.has(event.uid)) return false;
                 seenUids.add(event.uid);
                 return true;
             });
-
-            console.log('[Sync] Unique events after dedup:', uniqueEvents.length);
 
             const syncedEvents: SyncedEventInsert[] = uniqueEvents.map((event) => ({
                 subscription_id: subscriptionId,
@@ -177,11 +200,7 @@ export function useCalendarSubscriptions() {
                 description: event.description,
             }));
 
-            // 3. 새 데이터가 준비되면 기존 데이터 삭제 후 삽입
             if (syncedEvents.length > 0) {
-                console.log('[Sync] Replacing events:', syncedEvents.length);
-
-                // 기존 이벤트 삭제
                 const { error: deleteError } = await supabase
                     .from('synced_events')
                     .delete()
@@ -191,7 +210,6 @@ export function useCalendarSubscriptions() {
                     console.error('[Sync] Delete error:', deleteError);
                 }
 
-                // 새 이벤트 삽입 (insert 사용 - 삭제 후이므로 중복 없음)
                 const { error: insertError } = await supabase
                     .from('synced_events')
                     .insert(syncedEvents);
@@ -200,9 +218,7 @@ export function useCalendarSubscriptions() {
                     console.error('[Sync] Insert error:', insertError);
                     throw insertError;
                 }
-                console.log('[Sync] Events synced successfully');
             } else {
-                // 이벤트가 없으면 기존 데이터만 삭제
                 await supabase
                     .from('synced_events')
                     .delete()
@@ -222,7 +238,6 @@ export function useCalendarSubscriptions() {
                 )
             );
 
-            console.log('[Sync] Sync completed. Events count:', events.length);
             track('calendar_subscription_synced', { events_count: events.length });
             return { error: null, eventsCount: events.length };
         } catch (err: any) {
@@ -236,6 +251,11 @@ export function useCalendarSubscriptions() {
     };
 
     const syncAllSubscriptions = async () => {
+        if (!isOnline) {
+            Alert.alert('오프라인', '동기화는 인터넷이 필요해요.');
+            return [];
+        }
+
         const enabledSubscriptions = subscriptions.filter((s) => s.is_enabled);
         const results = [];
 
@@ -250,7 +270,7 @@ export function useCalendarSubscriptions() {
     useEffect(() => {
         if (!user) return;
         fetchSubscriptions();
-    }, [user, fetchSubscriptions]);
+    }, [user, fetchSubscriptions, syncVersion]);
 
     return {
         subscriptions,

@@ -62,28 +62,28 @@ export const BorderRadius = {
 } as const;
 
 export const FontSizes = {
-    xs: 9,
-    sm: 11,
-    base: 12,
-    md: 13,
-    lg: 14,
-    xl: 15,
-    '2xl': 16,
-    '3xl': 22,
-    '4xl': 24,
+    xs: 11,
+    sm: 13,
+    base: 14,
+    md: 15,
+    lg: 16,
+    xl: 17,
+    '2xl': 18,
+    '3xl': 24,
+    '4xl': 28,
 } as const;
 
-// 줄 간격 (fontSize * 1.6)
+// 줄 간격 (fontSize * 1.55)
 export const LineHeights = {
-    xs: 14,
-    sm: 18,
-    base: 19,
-    md: 21,
-    lg: 22,
-    xl: 24,
-    '2xl': 26,
-    '3xl': 35,
-    '4xl': 38,
+    xs: 17,
+    sm: 20,
+    base: 22,
+    md: 23,
+    lg: 25,
+    xl: 26,
+    '2xl': 28,
+    '3xl': 37,
+    '4xl': 43,
 } as const;
 
 export const FontFamily = {

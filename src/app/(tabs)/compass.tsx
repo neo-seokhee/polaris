@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Send, Plus, Check, Flame } from "lucide-react-native";
+import { TodoSkeleton } from "@/components/Skeleton";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { Colors, Spacing, FontSizes, BorderRadius, LineHeights } from "@/constants/theme";
@@ -22,9 +23,11 @@ import { requestGeminiCompass } from "@/lib/gemini";
 import { loadCompassResponseGuide } from "@/lib/compassGuide";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEntitlements } from "@/contexts/EntitlementsContext";
 import { supabase } from "@/lib/supabase";
 import { useDemoNudge } from "@/contexts/DemoNudgeContext";
 import type { CompassSuggestion } from "@/lib/gemini";
+import { findBestMatchingTodo, STRICT_MATCH_THRESHOLD, RELAXED_MATCH_THRESHOLD, type TodoLike } from "@/lib/compassMatcher";
 
 type ChatRole = "assistant" | "user";
 
@@ -34,185 +37,6 @@ interface ChatMessage {
   text: string;
   followUpQuestion?: string;
   suggestions?: Array<CompassSuggestion & { id: string; accepted?: boolean }>;
-}
-
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY?.trim();
-
-type TodoLike = {
-  id: string;
-  title: string;
-  memo: string | null;
-  category: string | null;
-  is_completed: boolean;
-  is_active: boolean;
-};
-
-const MATCH_STOPWORDS = new Set([
-  "할일",
-  "투두",
-  "todo",
-  "to",
-  "do",
-  "하기",
-  "진행",
-  "정리",
-  "작업",
-  "업무",
-  "오늘",
-  "지금",
-  "먼저",
-  "우선",
-  "관련",
-  "계획",
-  "작성",
-  "검토",
-  "실행",
-  "추진",
-  "지원",
-]);
-
-function normalizeTodoTitle(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenize(value: string) {
-  return normalizeTodoTitle(value)
-    .split(" ")
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2 && !MATCH_STOPWORDS.has(token));
-}
-
-function compact(value: string) {
-  return normalizeTodoTitle(value).replace(/\s+/g, "");
-}
-
-function levenshteinDistance(a: string, b: string) {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-
-  const dp = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
-  for (let i = 0; i <= a.length; i += 1) dp[i][0] = i;
-  for (let j = 0; j <= b.length; j += 1) dp[0][j] = j;
-
-  for (let i = 1; i <= a.length; i += 1) {
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
-      );
-    }
-  }
-
-  return dp[a.length][b.length];
-}
-
-function getTitleMatchScore(todoTitle: string, suggestionTitle: string) {
-  const todoNorm = normalizeTodoTitle(todoTitle);
-  const suggestionNorm = normalizeTodoTitle(suggestionTitle);
-  if (!todoNorm || !suggestionNorm) return 0;
-  if (todoNorm === suggestionNorm) return 1;
-
-  if (todoNorm.includes(suggestionNorm) || suggestionNorm.includes(todoNorm)) {
-    return 0.95;
-  }
-
-  const todoCompact = compact(todoTitle);
-  const suggestionCompact = compact(suggestionTitle);
-  const minLen = Math.min(todoCompact.length, suggestionCompact.length);
-  const maxLen = Math.max(todoCompact.length, suggestionCompact.length);
-  if (!minLen || !maxLen) return 0;
-
-  const distance = levenshteinDistance(todoCompact, suggestionCompact);
-  if (distance <= 1 && minLen >= 4) {
-    // 오탈자/한글 1글자 차이는 사실상 동일 제목으로 취급
-    return 0.92;
-  }
-
-  const todoTitleTokens = tokenize(todoTitle);
-  const suggestionTitleTokens = tokenize(suggestionTitle);
-  if (!todoTitleTokens.length || !suggestionTitleTokens.length) return 0;
-
-  const todoTitleSet = new Set(todoTitleTokens);
-  let overlap = 0;
-  suggestionTitleTokens.forEach((token) => {
-    if (todoTitleSet.has(token)) overlap += 1;
-  });
-  return overlap / Math.max(suggestionTitleTokens.length, 1);
-}
-
-function getMatchScore(todo: TodoLike, suggestion: CompassSuggestion) {
-  const titleScore = getTitleMatchScore(todo.title, suggestion.title);
-  if (titleScore >= 0.92) return titleScore;
-
-  const todoText = [todo.title, todo.memo || "", todo.category || ""].join(" ");
-  // NOTE: reason 문구는 설명성 텍스트라 오인 매칭을 크게 늘리므로 제외한다.
-  const suggestionText = [suggestion.title, suggestion.memo || ""].join(" ");
-
-  const normalizedTodoText = normalizeTodoTitle(todoText);
-  const normalizedSuggestionText = normalizeTodoTitle(suggestionText);
-
-  if (!normalizedTodoText || !normalizedSuggestionText) return 0;
-  if (normalizedTodoText === normalizedSuggestionText) return 1;
-
-  if (
-    normalizedTodoText.includes(normalizedSuggestionText) ||
-    normalizedSuggestionText.includes(normalizedTodoText)
-  ) {
-    return 0.95;
-  }
-
-  const todoTokens = tokenize(todoText);
-  const suggestionTokens = tokenize(suggestionText);
-  if (!todoTokens.length || !suggestionTokens.length) return 0;
-
-  const todoSet = new Set(todoTokens);
-  const suggestionSet = new Set(suggestionTokens);
-  let overlapCount = 0;
-  suggestionSet.forEach((token) => {
-    if (todoSet.has(token)) overlapCount += 1;
-  });
-
-  const overlapBySuggestion = overlapCount / suggestionSet.size;
-  const overlapByTodo = overlapCount / Math.max(todoSet.size, 1);
-
-  const hasCorePhrase =
-    tokenize(suggestion.title).some((token) => todoSet.has(token) && token.length >= 3) ||
-    tokenize(todo.title).some((token) => suggestionSet.has(token) && token.length >= 3);
-
-  let contextScore = overlapBySuggestion * 0.7 + overlapByTodo * 0.3;
-  if (hasCorePhrase) contextScore += 0.1;
-
-  const score = titleScore * 0.78 + contextScore * 0.22;
-  return Math.min(score, 1);
-}
-
-const STRICT_MATCH_THRESHOLD = 0.66;
-const RELAXED_MATCH_THRESHOLD = 0.58;
-
-function findBestMatchingTodo(
-  todos: TodoLike[],
-  suggestion: CompassSuggestion,
-  threshold: number = STRICT_MATCH_THRESHOLD
-) {
-  const candidates = todos.filter((todo) => !todo.is_completed);
-  let best: { todo: TodoLike; score: number } | null = null;
-
-  for (const todo of candidates) {
-    const score = getMatchScore(todo, suggestion);
-    if (!best || score > best.score) {
-      best = { todo, score };
-    }
-  }
-
-  if (best && best.score >= threshold) return best.todo;
-  return null;
 }
 
 const BASE_SYSTEM_INSTRUCTION = [
@@ -302,6 +126,7 @@ function formatAssistantText(text: string) {
 export default function CompassScreen() {
   useScreenTracking("screen_compass");
   const { user, isDemoMode } = useAuth();
+  const { checkCompassUsage, incrementCompassUsage, compassUsageToday, entitlements, showUpgradePrompt } = useEntitlements();
   const { checkDemoAndNudge } = useDemoNudge();
 
   const { todos, loading: todoLoading, addTodo, setActive, updateTodoCategory } = useTodos();
@@ -450,16 +275,15 @@ export default function CompassScreen() {
         currentMessages.push(userChat);
       }
 
-      try {
-        if (!GEMINI_API_KEY) {
-          addAssistantMessage({
-            message:
-              "Gemini API 키가 설정되지 않았어요. `EXPO_PUBLIC_GEMINI_API_KEY`를 환경 변수에 추가해 주세요. 우선 지금 기준으로 핵심 1가지는 '중요 할일 1개를 25분 집중'입니다.",
-            followUpQuestion: "키 설정 후 다시 실행해볼까요?",
-          });
-          return;
-        }
+      // Compass daily limit check
+      const usageCheck = await checkCompassUsage();
+      if (!usageCheck.allowed) {
+        setSending(false);
+        showUpgradePrompt('Compass 요청', usageCheck.message);
+        return;
+      }
 
+      try {
         const conversation = currentMessages.slice(-8).map((m) => ({
           role: m.role,
           text: m.text,
@@ -485,7 +309,6 @@ export default function CompassScreen() {
         );
 
         const ai = await requestGeminiCompass({
-          apiKey: GEMINI_API_KEY,
           systemInstruction: `${BASE_SYSTEM_INSTRUCTION}\n\n[Compass Response Guide]\n${responseGuide || "간결하고 친절한 파트너 톤으로, 문단/호흡 단위 줄바꿈으로 답변하세요."}`,
           userPrompt,
         });
@@ -512,8 +335,11 @@ export default function CompassScreen() {
           followUpQuestion: ai.followUpQuestion,
           suggestions: assistantMessage.suggestions,
         });
+
+        // Increment compass usage after successful response
+        await incrementCompassUsage();
       } catch (e: any) {
-        setError("Compass 응답 생성 중 오류가 발생했습니다.");
+        setError("잠시 문제가 생겼어요. 다시 시도해주세요.");
         addAssistantMessage({
           message: "응답을 생성하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.",
           followUpQuestion: "지금은 어떤 문제부터 정리할까요?",
@@ -527,7 +353,7 @@ export default function CompassScreen() {
         setSending(false);
       }
     },
-    [messages, contextSummary, addAssistantMessage, responseGuide, persistMessage]
+    [messages, contextSummary, addAssistantMessage, responseGuide, persistMessage, checkCompassUsage, incrementCompassUsage, showUpgradePrompt]
   );
 
   useEffect(() => {
@@ -685,9 +511,7 @@ export default function CompassScreen() {
   if (isLoadingData && messages.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={Colors.accent} />
-        </View>
+        <TodoSkeleton />
       </SafeAreaView>
     );
   }
@@ -699,13 +523,21 @@ export default function CompassScreen() {
           <Image source={require("../../../assets/sparkle-icon.png")} style={styles.headerIcon} />
           <Text style={styles.headerTitle}>Compass</Text>
         </View>
-        <Pressable
-          style={styles.refreshButton}
-          onPress={() => requestCompass({ proactive: true })}
-          disabled={sending}
-        >
-          <Text style={styles.refreshButtonText}>새 제안</Text>
-        </Pressable>
+        <View style={styles.headerRight}>
+          {entitlements?.compass_daily_limit != null &&
+           (compassUsageToday ?? 0) >= entitlements.compass_daily_limit - 1 && (
+            <Text style={styles.usageText}>
+              오늘 {Math.max(0, entitlements.compass_daily_limit - (compassUsageToday ?? 0))}회 남음
+            </Text>
+          )}
+          <Pressable
+            style={styles.refreshButton}
+            onPress={() => requestCompass({ proactive: true })}
+            disabled={sending}
+          >
+            <Text style={styles.refreshButtonText}>새 제안</Text>
+          </Pressable>
+        </View>
       </View>
 
       {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -754,6 +586,7 @@ export default function CompassScreen() {
                           }
                           onPress={() => handleAcceptSuggestion(message.id, suggestion.id)}
                           disabled={isDone || isBusy}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                         >
                           {isHighlightAction ? (
                             <Flame
@@ -843,12 +676,22 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontWeight: "700",
   },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  usageText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textMuted,
+    fontWeight: "600",
+  },
   refreshButton: {
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.borderPrimary,
     paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.lg,
     backgroundColor: Colors.bgSecondary,
   },
   refreshButtonText: {
