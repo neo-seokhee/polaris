@@ -3,52 +3,24 @@ import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-nativ
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSizes, Spacing } from '@/constants/theme';
 
+/**
+ * Google OAuth 콜백 페이지
+ * - 웹 브라우저: expo-auth-session이 이 페이지에서 응답을 처리
+ * - 모바일 앱: Vercel API(/api/google-callback)가 302로 앱 스킴에 리다이렉트
+ *   (state에 "mobile"이 포함된 경우만 API로 라우팅됨)
+ */
 export default function GoogleCallbackScreen() {
-    const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
+    const params = useLocalSearchParams<{ code?: string; error?: string }>();
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
     const [errorMessage, setErrorMessage] = useState('');
 
-    // state 파라미터 파싱 (JSON 형식: { mobile: true, callbackUrl: "..." })
-    let stateData: { mobile?: boolean; callbackUrl?: string } = {};
-    try {
-        if (params.state) {
-            stateData = JSON.parse(params.state);
-        }
-    } catch (e) {
-        console.log('[GoogleCallback] Failed to parse state:', params.state);
-    }
-
-    const isMobileApp = stateData.mobile === true;
-    const appCallbackUrl = stateData.callbackUrl || 'polaris://google-auth-callback';
-
-    console.log('[GoogleCallback] State data:', stateData);
-    console.log('[GoogleCallback] isMobileApp:', isMobileApp);
-    console.log('[GoogleCallback] appCallbackUrl:', appCallbackUrl);
-
     useEffect(() => {
         const handleCallback = async () => {
-            // 네이티브에서는 이 페이지에 도달하면 안 됨
             if (Platform.OS !== 'web') {
                 router.replace('/(tabs)/schedule');
                 return;
             }
 
-            // 모바일 앱에서 온 경우: code를 바로 앱으로 전달
-            if (isMobileApp) {
-                console.log('[GoogleCallback] Mobile app detected, redirecting back to app...');
-                const separator = appCallbackUrl.includes('?') ? '&' : '?';
-
-                if (params.code) {
-                    window.location.href = `${appCallbackUrl}${separator}code=${encodeURIComponent(params.code)}`;
-                } else if (params.error) {
-                    window.location.href = `${appCallbackUrl}${separator}error=${encodeURIComponent(params.error)}`;
-                } else {
-                    window.location.href = `${appCallbackUrl}${separator}error=no_code`;
-                }
-                return;
-            }
-
-            // 웹 브라우저 전용 플로우
             try {
                 if (params.error) {
                     throw new Error(`Google 인증 오류: ${params.error}`);
@@ -61,13 +33,13 @@ export default function GoogleCallbackScreen() {
                 // 웹에서는 useGoogleCalendar hook의 useAuthRequest가 처리하므로
                 // 여기서는 성공 메시지만 표시하고 schedule 페이지로 리다이렉트
                 setStatus('success');
-                console.log('[GoogleCallback] Web authentication successful, redirecting...');
+                console.log('[GoogleWebCallback] Web authentication successful, redirecting...');
 
                 setTimeout(() => {
                     router.replace('/(tabs)/schedule');
                 }, 500);
             } catch (error: any) {
-                console.error('[GoogleCallback] Error:', error);
+                console.error('[GoogleWebCallback] Error:', error);
                 setStatus('error');
                 setErrorMessage(error.message || '인증 중 오류가 발생했습니다.');
 
@@ -78,7 +50,7 @@ export default function GoogleCallbackScreen() {
         };
 
         handleCallback();
-    }, [params.code, params.error, isMobileApp, appCallbackUrl]);
+    }, [params.code, params.error]);
 
     return (
         <View style={styles.container}>

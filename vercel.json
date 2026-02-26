@@ -23,6 +23,17 @@
             "destination": "/api/kakao-callback"
         },
         {
+            "source": "/google-callback",
+            "has": [
+                {
+                    "type": "query",
+                    "key": "state",
+                    "value": ".*mobile.*"
+                }
+            ],
+            "destination": "/api/google-callback"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
         }
