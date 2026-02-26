@@ -2,7 +2,7 @@
   "expo": {
     "name": "Polaris",
     "slug": "polaris",
-    "version": "1.1",
+    "version": "1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -57,7 +57,7 @@
       }
     },
     "owner": "neo_seokhee",
-    "runtimeVersion": "1.1",
+    "runtimeVersion": "1.2",
     "updates": {
       "url": "https://u.expo.dev/550e6aff-b1a1-4a58-b2bd-64626a79ea3f"
     }
