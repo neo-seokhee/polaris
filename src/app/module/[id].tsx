@@ -67,15 +67,15 @@ export default function ModuleEntryScreen() {
           <View style={styles.lockedIconWrap}>
             <Lock size={32} color={Colors.textMuted} />
           </View>
-          <Text style={styles.lockedTitle}>{module.title}은(는) Pro 전용입니다</Text>
+          <Text style={styles.lockedTitle}>{module.title}</Text>
           <Text style={styles.lockedDesc}>
-            Pro 플랜으로 업그레이드하면{'\n'}이 모듈을 사용할 수 있습니다.
+            이 모듈은 스토어에서{'\n'}구매 후 사용할 수 있습니다.
           </Text>
           <Pressable
             style={styles.upgradeButton}
-            onPress={() => showUpgradePrompt(module.title, `${module.title}은(는) Pro 플랜에서 사용할 수 있습니다.`)}
+            onPress={() => showUpgradePrompt(module.title, `${module.title}은(는) 스토어에서 구매 후 사용할 수 있습니다.`)}
           >
-            <Text style={styles.upgradeButtonText}>Pro 시작하기</Text>
+            <Text style={styles.upgradeButtonText}>스토어 보기</Text>
           </Pressable>
         </View>
       </SafeAreaView>

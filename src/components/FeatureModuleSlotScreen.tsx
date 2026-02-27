@@ -18,12 +18,12 @@ function LockedModuleView({ moduleName, onUpgrade }: { moduleName?: string; onUp
       <View style={lockedStyles.iconWrap}>
         <Lock size={32} color={Colors.textMuted} />
       </View>
-      <Text style={lockedStyles.title}>{moduleName || '이 모듈'}은(는) Pro 전용입니다</Text>
+      <Text style={lockedStyles.title}>{moduleName || '이 모듈'}</Text>
       <Text style={lockedStyles.description}>
-        Pro 플랜으로 업그레이드하면{'\n'}이 모듈을 사용할 수 있습니다.
+        이 모듈은 스토어에서{'\n'}구매 후 사용할 수 있습니다.
       </Text>
       <Pressable style={lockedStyles.button} onPress={onUpgrade}>
-        <Text style={lockedStyles.buttonText}>Pro 시작하기</Text>
+        <Text style={lockedStyles.buttonText}>스토어 보기</Text>
       </Pressable>
     </View>
   );
@@ -60,7 +60,7 @@ export function FeatureModuleSlotScreen({ slot }: FeatureModuleSlotScreenProps) 
         moduleName={moduleDef?.title}
         onUpgrade={() => showUpgradePrompt(
           moduleDef?.title || '이 모듈',
-          `${moduleDef?.title || '이 모듈'}은(는) Pro 플랜에서 사용할 수 있습니다.`
+          `${moduleDef?.title || '이 모듈'}은(는) 스토어에서 구매 후 사용할 수 있습니다.`
         )}
       />
     );

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Pressable } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Pressable, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Settings, RefreshCw, Calendar, Plus, Sparkles } from "lucide-react-native";
 import { ScheduleSkeleton } from "@/components/Skeleton";

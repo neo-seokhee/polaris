@@ -7,7 +7,6 @@ import * as ExpoLinking from 'expo-linking';
 import * as Crypto from 'expo-crypto';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEntitlements } from '@/contexts/EntitlementsContext';
 import { useNetwork } from '@/contexts/NetworkContext';
 import {
     exchangeCodeForTokens,
@@ -78,7 +77,6 @@ const storage = {
 
 export function useGoogleCalendar() {
     const { user } = useAuth();
-    const { canUseGoogleCalendar, showUpgradePrompt } = useEntitlements();
     const { isOnline } = useNetwork();
     const [isConnected, setIsConnected] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -445,11 +443,6 @@ export function useGoogleCalendar() {
 
     // Google 계정 연결
     const connect = async (): Promise<{ error: string | null }> => {
-        // Plan entitlement check (block new connections, keep existing ones)
-        if (!canUseGoogleCalendar()) {
-            showUpgradePrompt('Google Calendar 연동', 'Google Calendar 연동은 Pro 플랜에서 사용할 수 있습니다.');
-            return { error: 'Pro 플랜이 필요해요.' };
-        }
         if (!isOnline) {
             Alert.alert('오프라인', 'Google Calendar 연결은 인터넷이 필요해요.');
             return { error: '오프라인 상태에서는 사용할 수 없습니다.' };
