@@ -23,6 +23,10 @@ const lineHeightMultiplier = 1.6;
 
 // Text, TextInput 컴포넌트의 기본 폰트 및 줄 간격 설정
 const setDefaultFont = () => {
+    // Web에서는 monkey-patching이 React DOM과 충돌 (CSSStyleDeclaration indexed setter 에러)
+    // react-native-web이 스타일을 DOM 객체로 변환한 후 배열로 감싸면 React DOM이 처리 불가
+    if (Platform.OS === 'web') return;
+
     const oldTextRender = (Text as any).render;
     (Text as any).render = function (...args: any[]) {
         const origin = oldTextRender.call(this, ...args);
@@ -95,6 +99,21 @@ export default function RootLayout() {
         "HakgyoansimBareonbatang": require("../../assets/fonts/HakgyoansimBareonbatangR.ttf"),
         "HakgyoansimBareonbatang-Bold": require("../../assets/fonts/HakgyoansimBareonbatangB.ttf"),
     });
+
+    // 웹: 전역 CSS로 기본 폰트 및 줄 간격 적용 (monkey-patch 대체)
+    useEffect(() => {
+        if (Platform.OS === 'web') {
+            const style = document.createElement('style');
+            style.textContent = `
+                div, span, input, textarea {
+                    font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    line-height: 1.6;
+                }
+            `;
+            document.head.appendChild(style);
+            return () => { document.head.removeChild(style); };
+        }
+    }, []);
 
     useEffect(() => {
         if (fontsLoaded) {
