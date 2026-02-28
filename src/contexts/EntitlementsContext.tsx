@@ -89,7 +89,7 @@ const EntitlementsContext = createContext<EntitlementsContextType | undefined>(u
 export function EntitlementsProvider({ children }: { children: React.ReactNode }) {
     const { user, isDemoMode } = useAuth();
     const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
-    const [planId, setPlanId] = useState<string | null>(null);
+    const [planId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [compassUsageToday, setCompassUsageToday] = useState<number | null>(null);
     const [purchasedProductIds, setPurchasedProductIds] = useState<string[]>([]);
@@ -104,7 +104,6 @@ export function EntitlementsProvider({ children }: { children: React.ReactNode }
     const fetchEntitlements = useCallback(async () => {
         if (isDemoMode || !user) {
             setEntitlements(GENEROUS_DEFAULTS);
-            setPlanId(null);
             setLoading(false);
             return;
         }
@@ -120,7 +119,6 @@ export function EntitlementsProvider({ children }: { children: React.ReactNode }
                     if (parsed.entitlements) {
                         const cachedEntitlements = parseEntitlements(parsed.entitlements);
                         setEntitlements(cachedEntitlements);
-                        setPlanId(parsed.planId ?? null);
                         hasCachedData = true;
                     }
                 } catch {
@@ -142,18 +140,6 @@ export function EntitlementsProvider({ children }: { children: React.ReactNode }
 
             const parsed = parseEntitlements(data as Record<string, unknown>);
             setEntitlements(parsed);
-
-            // Get plan ID separately
-            const { data: subData } = await supabase
-                .from('user_subscriptions')
-                .select('plan_id')
-                .eq('user_id', user.id)
-                .in('status', ['active', 'trialing', 'past_due'])
-                .limit(1)
-                .maybeSingle();
-
-            const currentPlanId = subData?.plan_id ?? 'free';
-            setPlanId(currentPlanId);
 
             // Fetch user purchases
             const { data: purchaseData } = await supabase
@@ -185,7 +171,6 @@ export function EntitlementsProvider({ children }: { children: React.ReactNode }
             // Cache for offline
             await AsyncStorage.setItem(cacheKey, JSON.stringify({
                 entitlements: data,
-                planId: currentPlanId,
             }));
         } catch (err) {
             console.error('[Entitlements] Fetch error:', err);
